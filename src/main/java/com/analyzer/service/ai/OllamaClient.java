@@ -38,25 +38,34 @@ public class OllamaClient {
         String systemPrompt = """
             You are a Senior Application Security Auditor. Analyze the provided source code chunk for security vulnerabilities.
             You must look for: SQL Injection, XSS, Authentication problems, Weak Cryptography, Hardcoded Secrets, Vulnerable Dependencies.
-            
-            CRITICAL: You must return ONLY a JSON array of objects, OR a JSON object containing a "vulnerabilities" array.
+    
+            CRITICAL RULE: Any hardcoded credentials, static URLs (like http://localhost:11434), or hardcoded configuration values (like AI model names) MUST be flagged as a 'Hardcoded Secrets' or 'Improper Configuration' vulnerability with HIGH or MEDIUM severity.
+    
+            You must return ONLY a JSON array of objects, OR a JSON object containing a "vulnerabilities" array.
             Each vulnerability object must have exactly these fields:
             - "title": short name of vulnerability
             - "severity": HIGH, MEDIUM, or LOW
             - "description": precise explanation
             - "lineRange": approximate lines in the chunk (e.g. "15-18") or "Unknown"
             - "recommendation": how to fix it
-            
+    
             If no vulnerabilities are found, return an empty JSON array: []
-            """;
+        """;
 
         try {
+            Map<String, Object> options = Map.of(
+                    "temperature", 0.0,
+                    "top_p", 0.1,
+                    "seed", 42 // Фиксируем генератор случайных чисел
+            );
+
             Map<String, Object> requestBody = Map.of(
                     "model", MODEL_NAME,
                     "prompt", "Code to analyze:\n\n" + codeChunk,
                     "system", systemPrompt,
                     "stream", false,
-                    "format", "json"
+                    "format", "json",
+                    "options", options
             );
 
             String jsonPayload = objectMapper.writeValueAsString(requestBody);

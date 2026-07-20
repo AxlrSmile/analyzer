@@ -6,28 +6,41 @@ import com.analyzer.service.ai.OllamaClient;
 import com.analyzer.service.parser.CodeParser;
 import com.analyzer.service.parser.FileAnalyzer;
 import com.analyzer.service.scanner.ProjectScanner;
+import javafx.application.Platform;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.concurrent.Task;
 import javafx.fxml.FXML;
-import javafx.scene.control.Button;
+import javafx.scene.control.*;
+import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Stage;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 @Component
 public class MainController {
 
-    @FXML
-    private Button scanButton;
+    @FXML private Button scanButton;
+    @FXML private ListView<SourceFile> filesListView;
+    @FXML private TableView<Vulnerability> vulnerabilitiesTable;
+    @FXML private TableColumn<Vulnerability, String> titleColumn;
+    @FXML private TableColumn<Vulnerability, String> severityColumn;
+    @FXML private TableColumn<Vulnerability, String> linesColumn;
+    @FXML private TextArea detailsTextArea;
 
     private final ProjectScanner projectScanner;
     private final FileAnalyzer fileAnalyzer;
     private final CodeParser codeParser;
     private final OllamaClient ollamaClient;
 
-    // Внедряем все необходимые компоненты через конструктор
+    // Специальный список JavaFX, который автоматически обновляет UI при изменении данных
+    private final ObservableList<SourceFile> scannedFiles = FXCollections.observableArrayList();
+
     public MainController(ProjectScanner projectScanner,
                           FileAnalyzer fileAnalyzer,
                           CodeParser codeParser,
@@ -40,6 +53,43 @@ public class MainController {
 
     @FXML
     public void initialize() {
+        // 1. Настраиваем привязку колонок таблицы к полям модели Vulnerability
+        titleColumn.setCellValueFactory(new PropertyValueFactory<>("title"));
+        severityColumn.setCellValueFactory(new PropertyValueFactory<>("severity"));
+        linesColumn.setCellValueFactory(new PropertyValueFactory<>("lineRange"));
+
+        // 2. Связываем ObservableList с ListView
+        filesListView.setItems(scannedFiles);
+
+        // 3. Кастомизируем отображение файлов в списке, чтобы выводилось только имя, а не весь путь
+        filesListView.setCellFactory(param -> new ListCell<>() {
+            @Override
+            protected void updateItem(SourceFile item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                } else {
+                    // Покажем имя и количество найденных уязвимостей рядом
+                    long count = item.getVulnerabilities().size();
+                    setText(item.getName() + (count > 0 ? " [!] (" + count + ")" : " (ОК)"));
+                }
+            }
+        });
+
+        // 4. Слушатель кликов по файлам в списке
+        filesListView.getSelectionModel().selectedItemProperty().addListener((obs, oldSelection, newSelection) -> {
+            if (newSelection != null) {
+                showVulnerabilitiesForFile(newSelection);
+            }
+        });
+
+        // 5. Слушатель кликов по строкам таблицы уязвимостей
+        vulnerabilitiesTable.getSelectionModel().selectedItemProperty().addListener((obs, oldSelection, newSelection) -> {
+            if (newSelection != null) {
+                showVulnerabilityDetails(newSelection);
+            }
+        });
+
         scanButton.setOnAction(event -> handleScanButtonClick());
     }
 
@@ -51,49 +101,96 @@ public class MainController {
         File selectedDirectory = directoryChooser.showDialog(stage);
 
         if (selectedDirectory != null) {
-            System.out.println("Выбрана директория: " + selectedDirectory.getAbsolutePath());
+            // Очищаем старые результаты перед новым сканированием
+            scannedFiles.clear();
+            vulnerabilitiesTable.getItems().clear();
+            detailsTextArea.clear();
 
-            try {
-                // 1. Сканируем проект
-                List<File> rawFiles = projectScanner.scanDirectory(selectedDirectory);
-                System.out.println("Найдено файлов для анализа: " + rawFiles.size());
-                System.out.println("--- Старт интеллектуального анализа ---");
+            // Блокируем кнопку на время сканирования
+            scanButton.setDisable(true);
+            scanButton.setText("Идет интеллектуальный анализ ИИ... Пожалуйста, подождите");
 
-                for (File file : rawFiles) {
-                    // 2. Читаем файл и определяем метаданные
-                    SourceFile sourceFile = fileAnalyzer.analyzeFile(file);
+            // Создаем фоновую задачу JavaFX Task
+            Task<Void> scanTask = new Task<>() {
+                @Override
+                protected Void call() throws Exception {
+                    List<File> rawFiles = projectScanner.scanDirectory(selectedDirectory);
 
-                    // 3. Разбиваем на чанки
-                    List<String> chunks = codeParser.splitIntoChunks(sourceFile);
+                    for (File file : rawFiles) {
+                        try {
+                            SourceFile sourceFile = fileAnalyzer.analyzeFile(file);
+                            List<String> chunks = codeParser.splitIntoChunks(sourceFile);
+                            List<Vulnerability> allFileVulns = new ArrayList<>();
 
-                    System.out.printf("Анализируем файл: %s (%d чанков)...%n", sourceFile.getName(), chunks.size());
-
-                    for (String chunk : chunks) {
-                        // 4. Отправляем каждый фрагмент в локальную LLM через Ollama
-                        List<Vulnerability> vulnerabilities = ollamaClient.analyzeCodeChunk(chunk);
-
-                        // Если уязвимости найдены — выводим их в консоль
-                        if (!vulnerabilities.isEmpty()) {
-                            System.out.printf("[!] В файле %s обнаружено уязвимостей: %d%n", sourceFile.getName(), vulnerabilities.size());
-                            for (Vulnerability vuln : vulnerabilities) {
-                                System.out.println("--------------------------------------------------");
-                                System.out.println("УЯЗВИМОСТЬ: " + vuln.getTitle());
-                                System.out.println("КРИТИЧНОСТЬ: " + vuln.getSeverity());
-                                System.out.println("СТРОКИ: " + vuln.getLineRange());
-                                System.out.println("ОПИСАНИЕ: " + vuln.getDescription());
-                                System.out.println("РЕКОМЕНДАЦИЯ: " + vuln.getRecommendation());
-                                System.out.println("--------------------------------------------------");
+                            for (String chunk : chunks) {
+                                List<Vulnerability> chunkVulns = ollamaClient.analyzeCodeChunk(chunk);
+                                allFileVulns.addAll(chunkVulns);
                             }
+
+                            sourceFile.setVulnerabilities(allFileVulns);
+
+                            // Безопасно обновляем UI из фонового потока
+                            Platform.runLater(() -> scannedFiles.add(sourceFile));
+
+                        } catch (IOException e) {
+                            System.err.println("Ошибка при анализе файла " + file.getName() + ": " + e.getMessage());
                         }
                     }
+                    return null;
                 }
+            };
 
-                System.out.println("--- Интеллектуальный анализ полностью завершен ---");
+            // Что делать, когда задача успешно завершится
+            scanTask.setOnSucceeded(e -> {
+                scanButton.setDisable(false);
+                scanButton.setText("Выбрать проект для сканирования");
 
-            } catch (IOException e) {
-                System.err.println("Ошибка при анализе проекта: " + e.getMessage());
-                e.printStackTrace();
-            }
+                Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                alert.setTitle("Анализ завершен");
+                alert.setHeaderText(null);
+                alert.setContentText("Проект успешно проанализирован локальным ИИ!");
+                alert.showAndWait();
+            });
+
+            // Что делать в случае критической ошибки
+            scanTask.setOnFailed(e -> {
+                scanButton.setDisable(false);
+                scanButton.setText("Выбрать проект для сканирования");
+                Throwable ex = scanTask.getException();
+                ex.printStackTrace();
+            });
+
+            // Запускаем задачу в отдельном системном потоке
+            Thread thread = new Thread(scanTask);
+            thread.setDaemon(true); // Поток закроется сам при закрытии приложения
+            thread.start();
         }
+    }
+
+    /**
+     * Загружает список уязвимостей конкретного файла в таблицу справа.
+     */
+    private void showVulnerabilitiesForFile(SourceFile sourceFile) {
+        vulnerabilitiesTable.setItems(FXCollections.observableArrayList(sourceFile.getVulnerabilities()));
+        detailsTextArea.clear(); // Очищаем поле деталей при переключении файла
+    }
+
+    /**
+     * Отображает подробный текстовый отчет об уязвимости в нижней текстовой области.
+     */
+    private void showVulnerabilityDetails(Vulnerability vulnerability) {
+        String details = String.format(
+                "УЯЗВИМОСТЬ: %s\n" +
+                        "КРИТИЧНОСТЬ: %s\n" +
+                        "СТРОКИ В КОДЕ: %s\n\n" +
+                        "ОПИСАНИЕ:\n%s\n\n" +
+                        "РЕКОМЕНДАЦИЯ ПО ИСПРАВЛЕНИЮ:\n%s",
+                vulnerability.getTitle(),
+                vulnerability.getSeverity(),
+                vulnerability.getLineRange(),
+                vulnerability.getDescription(),
+                vulnerability.getRecommendation()
+        );
+        detailsTextArea.setText(details);
     }
 }
