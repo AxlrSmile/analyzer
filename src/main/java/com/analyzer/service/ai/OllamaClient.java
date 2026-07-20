@@ -50,7 +50,7 @@ public class OllamaClient {
             - "recommendation": how to fix it
     
             If no vulnerabilities are found, return an empty JSON array: []
-        """;
+         """;
 
         try {
             Map<String, Object> options = Map.of(
