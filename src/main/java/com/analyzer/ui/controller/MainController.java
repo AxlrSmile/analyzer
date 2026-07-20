@@ -1,5 +1,8 @@
 package com.analyzer.ui.controller;
 
+import com.analyzer.domain.model.SourceFile;
+import com.analyzer.service.parser.CodeParser;
+import com.analyzer.service.parser.FileAnalyzer;
 import com.analyzer.service.scanner.ProjectScanner;
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
@@ -17,12 +20,17 @@ public class MainController {
     @FXML
     private Button scanButton;
 
-    // Зависимость от абстракции (SOLID: Interface Segregation & Dependency Inversion)
     private final ProjectScanner projectScanner;
+    private final FileAnalyzer fileAnalyzer;
+    private final CodeParser codeParser;
 
-    // Внедряем сканер через конструктор. Spring Boot автоматически подставит ProjectScannerImpl
-    public MainController(ProjectScanner projectScanner) {
+    // Внедряем все три сервиса (SOLID: Dependency Inversion)
+    public MainController(ProjectScanner projectScanner,
+                          FileAnalyzer fileAnalyzer,
+                          CodeParser codeParser) {
         this.projectScanner = projectScanner;
+        this.fileAnalyzer = fileAnalyzer;
+        this.codeParser = codeParser;
     }
 
     @FXML
@@ -31,35 +39,54 @@ public class MainController {
     }
 
     private void handleScanButtonClick() {
-        // Создаем диалоговое окно выбора папки от JavaFX
         DirectoryChooser directoryChooser = new DirectoryChooser();
         directoryChooser.setTitle("Выберите папку с исходным кодом проекта");
 
-        // Получаем текущую Stage (окно), чтобы сделать диалог модальным
         Stage stage = (Stage) scanButton.getScene().getWindow();
         File selectedDirectory = directoryChooser.showDialog(stage);
 
         if (selectedDirectory != null) {
-            System.out.println("Выбрана директория для сканирования: " + selectedDirectory.getAbsolutePath());
+            System.out.println("Выбрана директория: " + selectedDirectory.getAbsolutePath());
 
             try {
-                // Вызываем наш сервис сканирования
-                List<File> codeFiles = projectScanner.scanDirectory(selectedDirectory);
+                // 1. Сканируем и получаем сырые файлы
+                List<File> rawFiles = projectScanner.scanDirectory(selectedDirectory);
+                System.out.println("Найдено файлов для анализа: " + rawFiles.size());
+                System.out.println("--- Старт обработки файлов ---");
 
-                System.out.println("--- Результаты сканирования ---");
-                System.out.println("Всего найдено подходящих файлов: " + codeFiles.size());
+                int totalChunks = 0;
 
-                // Временно выведем первые 5 файлов для проверки
-                codeFiles.stream()
-                        .limit(5)
-                        .forEach(file -> System.out.println(" - " + file.getName() + " (" + file.length() + " байт)"));
+                for (File file : rawFiles) {
+                    // 2. Читаем файл и преобразуем в доменную модель
+                    SourceFile sourceFile = fileAnalyzer.analyzeFile(file);
+
+                    // 3. Разбиваем файл на чанки для Ollama
+                    List<String> chunks = codeParser.splitIntoChunks(sourceFile);
+                    totalChunks += chunks.size();
+
+                    // Логируем промежуточный результат в консоль
+                    System.out.printf("Файл: %s | Язык: %s | Размер: %d байт | Чанков: %d%n",
+                            sourceFile.getName(),
+                            sourceFile.getExtension(),
+                            sourceFile.getSizeInBytes(),
+                            chunks.size()
+                    );
+
+                    // Выведем структуру первого чанка одного из файлов для наглядности
+                    if (!chunks.isEmpty() && sourceFile.getName().equals("MainController.java")) {
+                        System.out.println("\n--- Пример заголовка чанка для ИИ ---");
+                        System.out.println(chunks.get(0).substring(0, Math.min(200, chunks.get(0).length())) + "...");
+                        System.out.println("-------------------------------------\n");
+                    }
+                }
+
+                System.out.println("--- Обработка завершена ---");
+                System.out.println("Всего подготовлено чанков для отправки в ИИ: " + totalChunks);
 
             } catch (IOException e) {
-                System.err.println("Ошибка при сканировании директории: " + e.getMessage());
+                System.err.println("Ошибка при обработке проекта: " + e.getMessage());
                 e.printStackTrace();
             }
-        } else {
-            System.out.println("Выбор директории отменен пользователем.");
         }
     }
 }
