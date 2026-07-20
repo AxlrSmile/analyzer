@@ -12,4 +12,5 @@ public class SourceFile {
     private String absolutePath;
     private String extension;
     private long sizeInBytes;
+    private String content;
 }
