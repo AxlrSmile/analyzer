@@ -35,30 +35,28 @@ public class OllamaClient {
     }
 
     public List<Vulnerability> analyzeCodeChunk(String codeChunk) {
-        // Формируем жесткий системный промпт для разбора уязвимостей
         String systemPrompt = """
             You are a Senior Application Security Auditor. Analyze the provided source code chunk for security vulnerabilities.
             You must look for: SQL Injection, XSS, Authentication problems, Weak Cryptography, Hardcoded Secrets, Vulnerable Dependencies.
             
-            CRITICAL: You must return ONLY a JSON array of objects. Do not include markdown code blocks like ```json.
-            Each object in the array must have exactly these fields:
+            CRITICAL: You must return ONLY a JSON array of objects, OR a JSON object containing a "vulnerabilities" array.
+            Each vulnerability object must have exactly these fields:
             - "title": short name of vulnerability
             - "severity": HIGH, MEDIUM, or LOW
-            - "description": precise explanation of why this is a vulnerability
+            - "description": precise explanation
             - "lineRange": approximate lines in the chunk (e.g. "15-18") or "Unknown"
-            - "recommendation": how to fix this secure issue
+            - "recommendation": how to fix it
             
             If no vulnerabilities are found, return an empty JSON array: []
             """;
 
         try {
-            // Собираем тело запроса в Map для последующей конвертации в JSON
             Map<String, Object> requestBody = Map.of(
                     "model", MODEL_NAME,
                     "prompt", "Code to analyze:\n\n" + codeChunk,
                     "system", systemPrompt,
-                    "stream", false, // Нам нужен полный ответ сразу, а не поток токенов
-                    "format", "json" // Заставляем Ollama контролировать JSON-формат на выходе модели
+                    "stream", false,
+                    "format", "json"
             );
 
             String jsonPayload = objectMapper.writeValueAsString(requestBody);
@@ -67,10 +65,9 @@ public class OllamaClient {
                     .uri(URI.create(OLLAMA_URL))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
-                    .timeout(Duration.ofMinutes(5)) // Таймаут на генерацию — до 5 минут
+                    .timeout(Duration.ofMinutes(5))
                     .build();
 
-            // Отправляем синхронный запрос
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() != 200) {
@@ -78,12 +75,29 @@ public class OllamaClient {
                 return new ArrayList<>();
             }
 
-            // Парсим ответ от Ollama. Она возвращает JSON вида: { "response": "твой_форматированный_текст", ... }
             JsonNode rootNode = objectMapper.readTree(response.body());
-            String aiResponseText = rootNode.get("response").asText();
+            String aiResponseText = rootNode.get("response").asText().trim();
 
-            // Конвертируем строку-массив от ИИ в типизированный список Java-объектов
-            return objectMapper.readValue(aiResponseText, new TypeReference<List<Vulnerability>>() {});
+            // --- УМНЫЙ И БЕЗОПАСНЫЙ ПАРСИНГ ---
+            JsonNode jsonNode = objectMapper.readTree(aiResponseText);
+
+            // Вариант 1: ИИ вернул чистый массив [ {...}, {...} ]
+            if (jsonNode.isArray()) {
+                return objectMapper.readValue(aiResponseText, new TypeReference<List<Vulnerability>>() {});
+            }
+
+            // Вариант 2: ИИ вернул объект { "vulnerabilities": [ ... ] }
+            if (jsonNode.isObject()) {
+                if (jsonNode.has("vulnerabilities") && jsonNode.get("vulnerabilities").isArray()) {
+                    JsonNode arrayNode = jsonNode.get("vulnerabilities");
+                    return objectMapper.readValue(arrayNode.toString(), new TypeReference<List<Vulnerability>>() {});
+                }
+
+                // Если объект пустой или содержит признаки отсутствия уязвимостей
+                System.out.println("ИИ вернул объект без уязвимостей: " + aiResponseText);
+            }
+
+            return new ArrayList<>();
 
         } catch (IOException | InterruptedException e) {
             System.err.println("Error communication with Ollama: " + e.getMessage());

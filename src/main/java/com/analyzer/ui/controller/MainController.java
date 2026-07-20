@@ -1,6 +1,8 @@
 package com.analyzer.ui.controller;
 
 import com.analyzer.domain.model.SourceFile;
+import com.analyzer.domain.model.Vulnerability;
+import com.analyzer.service.ai.OllamaClient;
 import com.analyzer.service.parser.CodeParser;
 import com.analyzer.service.parser.FileAnalyzer;
 import com.analyzer.service.scanner.ProjectScanner;
@@ -23,14 +25,17 @@ public class MainController {
     private final ProjectScanner projectScanner;
     private final FileAnalyzer fileAnalyzer;
     private final CodeParser codeParser;
+    private final OllamaClient ollamaClient;
 
-    // Внедряем все три сервиса (SOLID: Dependency Inversion)
+    // Внедряем все необходимые компоненты через конструктор
     public MainController(ProjectScanner projectScanner,
                           FileAnalyzer fileAnalyzer,
-                          CodeParser codeParser) {
+                          CodeParser codeParser,
+                          OllamaClient ollamaClient) {
         this.projectScanner = projectScanner;
         this.fileAnalyzer = fileAnalyzer;
         this.codeParser = codeParser;
+        this.ollamaClient = ollamaClient;
     }
 
     @FXML
@@ -49,42 +54,44 @@ public class MainController {
             System.out.println("Выбрана директория: " + selectedDirectory.getAbsolutePath());
 
             try {
-                // 1. Сканируем и получаем сырые файлы
+                // 1. Сканируем проект
                 List<File> rawFiles = projectScanner.scanDirectory(selectedDirectory);
                 System.out.println("Найдено файлов для анализа: " + rawFiles.size());
-                System.out.println("--- Старт обработки файлов ---");
-
-                int totalChunks = 0;
+                System.out.println("--- Старт интеллектуального анализа ---");
 
                 for (File file : rawFiles) {
-                    // 2. Читаем файл и преобразуем в доменную модель
+                    // 2. Читаем файл и определяем метаданные
                     SourceFile sourceFile = fileAnalyzer.analyzeFile(file);
 
-                    // 3. Разбиваем файл на чанки для Ollama
+                    // 3. Разбиваем на чанки
                     List<String> chunks = codeParser.splitIntoChunks(sourceFile);
-                    totalChunks += chunks.size();
 
-                    // Логируем промежуточный результат в консоль
-                    System.out.printf("Файл: %s | Язык: %s | Размер: %d байт | Чанков: %d%n",
-                            sourceFile.getName(),
-                            sourceFile.getExtension(),
-                            sourceFile.getSizeInBytes(),
-                            chunks.size()
-                    );
+                    System.out.printf("Анализируем файл: %s (%d чанков)...%n", sourceFile.getName(), chunks.size());
 
-                    // Выведем структуру первого чанка одного из файлов для наглядности
-                    if (!chunks.isEmpty() && sourceFile.getName().equals("MainController.java")) {
-                        System.out.println("\n--- Пример заголовка чанка для ИИ ---");
-                        System.out.println(chunks.get(0).substring(0, Math.min(200, chunks.get(0).length())) + "...");
-                        System.out.println("-------------------------------------\n");
+                    for (String chunk : chunks) {
+                        // 4. Отправляем каждый фрагмент в локальную LLM через Ollama
+                        List<Vulnerability> vulnerabilities = ollamaClient.analyzeCodeChunk(chunk);
+
+                        // Если уязвимости найдены — выводим их в консоль
+                        if (!vulnerabilities.isEmpty()) {
+                            System.out.printf("[!] В файле %s обнаружено уязвимостей: %d%n", sourceFile.getName(), vulnerabilities.size());
+                            for (Vulnerability vuln : vulnerabilities) {
+                                System.out.println("--------------------------------------------------");
+                                System.out.println("УЯЗВИМОСТЬ: " + vuln.getTitle());
+                                System.out.println("КРИТИЧНОСТЬ: " + vuln.getSeverity());
+                                System.out.println("СТРОКИ: " + vuln.getLineRange());
+                                System.out.println("ОПИСАНИЕ: " + vuln.getDescription());
+                                System.out.println("РЕКОМЕНДАЦИЯ: " + vuln.getRecommendation());
+                                System.out.println("--------------------------------------------------");
+                            }
+                        }
                     }
                 }
 
-                System.out.println("--- Обработка завершена ---");
-                System.out.println("Всего подготовлено чанков для отправки в ИИ: " + totalChunks);
+                System.out.println("--- Интеллектуальный анализ полностью завершен ---");
 
             } catch (IOException e) {
-                System.err.println("Ошибка при обработке проекта: " + e.getMessage());
+                System.err.println("Ошибка при анализе проекта: " + e.getMessage());
                 e.printStackTrace();
             }
         }
