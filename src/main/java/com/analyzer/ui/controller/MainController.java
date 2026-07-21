@@ -3,6 +3,7 @@ package com.analyzer.ui.controller;
 import com.analyzer.domain.model.SourceFile;
 import com.analyzer.domain.model.Vulnerability;
 import com.analyzer.service.ai.OllamaClient;
+import com.analyzer.service.fix.FileFixService;
 import com.analyzer.service.parser.CodeParser;
 import com.analyzer.service.parser.FileAnalyzer;
 import com.analyzer.service.report.PdfReportService;
@@ -42,6 +43,9 @@ public class MainController {
     @FXML private TextField promptInputField;
     @FXML private Button sendPromptButton;
 
+    @FXML private Button fixAllButton;
+    @FXML private Button fixCurrentFileButton;
+
     private final ProjectScanner projectScanner;
     private final FileAnalyzer fileAnalyzer;
     private final CodeParser codeParser;
@@ -57,16 +61,20 @@ public class MainController {
     // Накопитель HTML историй сообщений
     private final StringBuilder chatHistoryHtml = new StringBuilder();
 
+    private final FileFixService fileFixService;
+
     public MainController(ProjectScanner projectScanner,
                           FileAnalyzer fileAnalyzer,
                           CodeParser codeParser,
                           OllamaClient ollamaClient,
-                          PdfReportService pdfReportService) {
+                          PdfReportService pdfReportService,
+                          FileFixService fileFixService) { // <-- Новый сервис
         this.projectScanner = projectScanner;
         this.fileAnalyzer = fileAnalyzer;
         this.codeParser = codeParser;
         this.ollamaClient = ollamaClient;
         this.pdfReportService = pdfReportService;
+        this.fileFixService = fileFixService;
     }
 
     @FXML
@@ -106,6 +114,9 @@ public class MainController {
         exportPdfButton.setOnAction(event -> handleExportPdfClick()); // Обработчик экспорта
         sendPromptButton.setOnAction(event -> handleSendPromptClick());
         promptInputField.setOnAction(event -> handleSendPromptClick());
+
+        fixCurrentFileButton.setOnAction(event -> handleFixCurrentFileClick());
+        fixAllButton.setOnAction(event -> handleFixAllClick());
 
         resetChatHtml();
     }
@@ -302,5 +313,111 @@ public class MainController {
     private void renderHtml() {
         String fullHtml = chatHistoryHtml.toString() + "<script>window.scrollTo(0, document.body.scrollHeight);</script></body></html>";
         Platform.runLater(() -> chatWebView.getEngine().loadContent(fullHtml));
+    }
+    // 1. Создание .txt версии для ТЕКУЩЕГО файла
+    private void handleFixCurrentFileClick() {
+        SourceFile selectedFile = filesListView.getSelectionModel().getSelectedItem();
+
+        if (selectedFile == null) {
+            Alert alert = new Alert(Alert.AlertType.WARNING, "Сначала выберите файл из списка слева!");
+            alert.showAndWait();
+            return;
+        }
+
+        if (selectedFile.getVulnerabilities().isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.INFORMATION, "В этом файле не найдено уязвимостей!");
+            alert.showAndWait();
+            return;
+        }
+
+        fixCurrentFileButton.setDisable(true);
+        appendMessageToChatHtml("Система", "⏳ *ИИ формирует исправленный вариант файла " + selectedFile.getName() + "...*");
+
+        Task<String> fixTask = new Task<>() {
+            @Override
+            protected String call() throws Exception {
+                return ollamaClient.fixSourceFile(selectedFile);
+            }
+        };
+
+        fixTask.setOnSucceeded(e -> {
+            try {
+                String fixedCode = fixTask.getValue();
+                String createdFileName = fileFixService.saveFixedVersionAsTxt(selectedFile, fixedCode);
+
+                fixCurrentFileButton.setDisable(false);
+
+                appendMessageToChatHtml("ИИ-Консультант",
+                        "✅ **Исправленный вариант сохранен!**\n\n" +
+                                "Создан файл: `" + createdFileName + "` в той же директории.\n\n" +
+                                "```java\n" + fixedCode + "\n```");
+            } catch (Exception ex) {
+                fixCurrentFileButton.setDisable(false);
+                appendMessageToChatHtml("Система", "❌ **Ошибка сохранения .txt файла:** " + ex.getMessage());
+            }
+        });
+
+        fixTask.setOnFailed(e -> {
+            fixCurrentFileButton.setDisable(false);
+            appendMessageToChatHtml("Система", "❌ **Ошибка генерации исправления ИИ.**");
+        });
+
+        new Thread(fixTask).start();
+    }
+
+    // 2. Создание .txt версий для ВСЕХ файлов проекта с уязвимостями
+    private void handleFixAllClick() {
+        List<SourceFile> problematicFiles = scannedFiles.stream()
+                .filter(f -> !f.getVulnerabilities().isEmpty())
+                .toList();
+
+        if (problematicFiles.isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.INFORMATION, "В проекте нет файлов с уязвимостями для исправления!");
+            alert.showAndWait();
+            return;
+        }
+
+        Alert confirmAlert = new Alert(Alert.AlertType.CONFIRMATION,
+                "Для " + problematicFiles.size() + " файлов с уязвимостями будут созданы исправленные копии (.txt) в их директориях. Продолжить?",
+                ButtonType.YES, ButtonType.NO);
+        confirmAlert.showAndWait();
+
+        if (confirmAlert.getResult() != ButtonType.YES) return;
+
+        fixAllButton.setDisable(true);
+        fixAllButton.setText("Идет генерация .txt исправлений...");
+
+        Task<Void> fixAllTask = new Task<>() {
+            @Override
+            protected Void call() throws Exception {
+                for (SourceFile file : problematicFiles) {
+                    try {
+                        String fixedCode = ollamaClient.fixSourceFile(file);
+                        fileFixService.saveFixedVersionAsTxt(file, fixedCode);
+                    } catch (Exception e) {
+                        System.err.println("Ошибка при генерации .txt для " + file.getName() + ": " + e.getMessage());
+                    }
+                }
+                return null;
+            }
+        };
+
+        fixAllTask.setOnSucceeded(e -> {
+            fixAllButton.setDisable(false);
+            fixAllButton.setText("⚡ Исправить весь проект");
+
+            Alert alert = new Alert(Alert.AlertType.INFORMATION);
+            alert.setTitle("Успех");
+            alert.setHeaderText(null);
+            alert.setContentText("Исправленные варианты (.txt) успешно созданы рядом с исходными файлами!");
+            alert.showAndWait();
+        });
+
+        fixAllTask.setOnFailed(e -> {
+            fixAllButton.setDisable(false);
+            fixAllButton.setText("⚡ Исправить весь проект");
+        });
+
+        new Thread(fixAllTask).start();
     }
 }

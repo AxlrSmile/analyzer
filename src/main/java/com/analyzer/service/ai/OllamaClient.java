@@ -23,13 +23,12 @@ public class OllamaClient {
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
 
-    // Конфигурация по умолчанию (можно вынести в application.properties)
+    // Конфигурация по умолчанию
     private static final String OLLAMA_URL = "http://localhost:11434/api/generate";
     private static final String MODEL_NAME = "qwen2.5-coder:7b"; // или deepseek-coder
 
     public OllamaClient(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
-        // Настраиваем HttpClient с таймаутом (ИИ может думать долго)
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
@@ -59,7 +58,7 @@ public class OllamaClient {
             Map<String, Object> options = Map.of(
                     "temperature", 0.0,
                     "top_p", 0.1,
-                    "seed", 42 // Фиксируем генератор случайных чисел
+                    "seed", 42
             );
 
             Map<String, Object> requestBody = Map.of(
@@ -90,22 +89,17 @@ public class OllamaClient {
             JsonNode rootNode = objectMapper.readTree(response.body());
             String aiResponseText = rootNode.get("response").asText().trim();
 
-            // --- УМНЫЙ И БЕЗОПАСНЫЙ ПАРСИНГ ---
             JsonNode jsonNode = objectMapper.readTree(aiResponseText);
 
-            // Вариант 1: ИИ вернул чистый массив [ {...}, {...} ]
             if (jsonNode.isArray()) {
                 return objectMapper.readValue(aiResponseText, new TypeReference<List<Vulnerability>>() {});
             }
 
-            // Вариант 2: ИИ вернул объект { "vulnerabilities": [ ... ] }
             if (jsonNode.isObject()) {
                 if (jsonNode.has("vulnerabilities") && jsonNode.get("vulnerabilities").isArray()) {
                     JsonNode arrayNode = jsonNode.get("vulnerabilities");
                     return objectMapper.readValue(arrayNode.toString(), new TypeReference<List<Vulnerability>>() {});
                 }
-
-                // Если объект пустой или содержит признаки отсутствия уязвимостей
                 System.out.println("ИИ вернул объект без уязвимостей: " + aiResponseText);
             }
 
@@ -151,9 +145,40 @@ public class OllamaClient {
                 userQuestion
         );
 
+        return executeOllamaRequest(prompt, systemPrompt);
+    }
+
+    /**
+     * Генерация полностью исправленной версии файла.
+     */
+    public String fixSourceFile(SourceFile file) {
+        String systemPrompt = "Ты — Senior Java Security Architect. Твоя задача — написать безопасный, чистый и исправленный код без уязвимостей.";
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("Ниже представлен исходный код файла '%s', в котором обнаружены следующие уязвимости:\n", file.getName()));
+
+        for (Vulnerability v : file.getVulnerabilities()) {
+            sb.append(String.format("- %s (Строки: %s): %s\n", v.getTitle(), v.getLineRange(), v.getDescription()));
+        }
+
+        sb.append("\nВот исходный код файла:\n```java\n")
+                .append(file.getContent())
+                .append("\n```\n\n")
+                .append("Перепиши этот код так, чтобы полностью устранить все указанные уязвимости. ")
+                .append("ВАЖНО: В ответе верни ИСКЛЮЧИТЕЛЬНО готовый исправленный код Java внутри тегов ```java ... ``` без лишних приветствий и пояснений.");
+
+        String response = executeOllamaRequest(sb.toString(), systemPrompt);
+
+        return extractCodeBlock(response);
+    }
+
+    /**
+     * Универсальный private-метод для отправки любого текстового промпта в Ollama.
+     */
+    private String executeOllamaRequest(String prompt, String systemPrompt) {
         try {
             Map<String, Object> options = Map.of(
-                    "temperature", 0.2 // Небольшая гибкость для генерации примеров кода
+                    "temperature", 0.1
             );
 
             Map<String, Object> requestBody = Map.of(
@@ -170,7 +195,7 @@ public class OllamaClient {
                     .uri(URI.create(OLLAMA_URL))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
-                    .timeout(Duration.ofMinutes(3))
+                    .timeout(Duration.ofMinutes(4))
                     .build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
@@ -188,5 +213,24 @@ public class OllamaClient {
             }
             return "Ошибка связи с Ollama: " + e.getMessage();
         }
+    }
+
+    private String extractCodeBlock(String markdown) {
+        if (markdown == null || markdown.isEmpty()) return "";
+
+        if (markdown.contains("```java")) {
+            int start = markdown.indexOf("```java") + 7;
+            int end = markdown.indexOf("```", start);
+            if (end != -1) {
+                return markdown.substring(start, end).trim();
+            }
+        } else if (markdown.contains("```")) {
+            int start = markdown.indexOf("```") + 3;
+            int end = markdown.indexOf("```", start);
+            if (end != -1) {
+                return markdown.substring(start, end).trim();
+            }
+        }
+        return markdown.trim();
     }
 }

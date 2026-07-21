@@ -25,10 +25,15 @@
         </font>
     </Label>
 
-    <!-- Панель основных действий: Сканирование + Экспорт в PDF -->
+    <!-- Панель основных действий -->
     <HBox spacing="10.0">
         <children>
             <Button fx:id="scanButton" maxWidth="Infinity" mnemonicParsing="false" style="-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="Выбрать проект для сканирования" HBox.hgrow="ALWAYS">
+                <font>
+                    <Font size="14.0"/>
+                </font>
+            </Button>
+            <Button fx:id="fixAllButton" mnemonicParsing="false" style="-fx-background-color: #e67e22; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="⚡ Исправить весь проект">
                 <font>
                     <Font size="14.0"/>
                 </font>
@@ -82,19 +87,24 @@
                                 </children>
                             </VBox>
 
-                            <!-- Нижняя часть: WebView Чат -->
+                            <!-- Нижняя часть: WebView Чат и Локальная Кнопка -->
                             <VBox spacing="8.0">
                                 <padding>
                                     <Insets top="5.0"/>
                                 </padding>
                                 <children>
-                                    <Label text="Интерактивный диалог с ИИ-Консультантом:" textFill="#2c3e50">
-                                        <font>
-                                            <Font name="System Bold" size="12.0"/>
-                                        </font>
-                                    </Label>
+                                    <HBox alignment="CENTER_LEFT" spacing="10.0">
+                                        <children>
+                                            <Label text="Интерактивный диалог с ИИ-Консультантом:" textFill="#2c3e50" HBox.hgrow="ALWAYS">
+                                                <font>
+                                                    <Font name="System Bold" size="12.0"/>
+                                                </font>
+                                            </Label>
+                                            <!-- Кнопка исправления текущего выбранного файла -->
+                                            <Button fx:id="fixCurrentFileButton" mnemonicParsing="false" style="-fx-background-color: #8e44ad; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 4;" text="🛠️ Авто-исправить этот файл" />
+                                        </children>
+                                    </HBox>
 
-                                    <!-- Окно браузера для Markdown HTML чата -->
                                     <WebView VBox.vgrow="ALWAYS" fx:id="chatWebView"/>
 
                                     <!-- Панель ввода вопроса -->
