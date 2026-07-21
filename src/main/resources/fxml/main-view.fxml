@@ -33,6 +33,11 @@
                     <Font size="14.0"/>
                 </font>
             </Button>
+            <Button fx:id="clearButton" mnemonicParsing="false" style="-fx-background-color: #c0392b; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="❌ Очистить">
+                <font>
+                    <Font size="14.0"/>
+                </font>
+            </Button>
             <Button fx:id="scanButton" disable="true" maxWidth="Infinity" mnemonicParsing="false" style="-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="🚀 Запустить анализ выбранных" HBox.hgrow="ALWAYS">
                 <font>
                     <Font size="14.0"/>
@@ -110,7 +115,6 @@
                                                     <Font name="System Bold" size="12.0"/>
                                                 </font>
                                             </Label>
-                                            <!-- Кнопка исправления текущего выбранного файла -->
                                             <Button fx:id="fixCurrentFileButton" mnemonicParsing="false" style="-fx-background-color: #8e44ad; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 4;" text="🛠️ Авто-исправить этот файл" />
                                         </children>
                                     </HBox>

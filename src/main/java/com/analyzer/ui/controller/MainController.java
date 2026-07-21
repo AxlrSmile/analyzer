@@ -35,6 +35,7 @@ import java.util.List;
 public class MainController {
 
     @FXML private Button selectFolderButton;
+    @FXML private Button clearButton;
     @FXML private Button scanButton;
     @FXML private Button exportPdfButton;
     @FXML private Button pasteCodeButton;
@@ -156,6 +157,7 @@ public class MainController {
 
         // Привязка событий к кнопкам
         selectFolderButton.setOnAction(event -> handleSelectFolderClick());
+        clearButton.setOnAction(event -> handleClearProjectClick());
         scanButton.setOnAction(event -> handleStartScanClick());
         pasteCodeButton.setOnAction(event -> handlePasteAndAnalyzeCode());
         exportPdfButton.setOnAction(event -> handleExportPdfClick());
@@ -192,6 +194,19 @@ public class MainController {
             scanButton.setDisable(false);
             appendMessageToChatHtml("Система", "📁 Загружен проект: `" + folder.getName() + "`. Выберите файлы/папки в дереве и нажмите **«Запустить анализ выбранных»**.");
         }
+    }
+
+    /**
+     * Полная очистка состояния проекта и выбор нового
+     */
+    private void handleClearProjectClick() {
+        selectedProjectFolder = null;
+        scannedFiles.clear();
+        fileTreeView.setRoot(null);
+        vulnerabilitiesTable.getItems().clear();
+        scanButton.setDisable(true);
+        resetChatHtml();
+        appendMessageToChatHtml("Система", "🧹 Проект и результаты анализа успешно очищены. Выберите новую папку для анализа.");
     }
 
     private void buildFileTree(File rootFolder) {
