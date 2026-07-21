@@ -33,6 +33,11 @@
                     <Font size="14.0"/>
                 </font>
             </Button>
+            <Button fx:id="pasteCodeButton" mnemonicParsing="false" style="-fx-background-color: #9b59b6; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="📋 Анализ из буфера (Ctrl+V)">
+                <font>
+                    <Font size="14.0"/>
+                </font>
+            </Button>
             <Button fx:id="fixAllButton" mnemonicParsing="false" style="-fx-background-color: #e67e22; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="⚡ Исправить весь проект">
                 <font>
                     <Font size="14.0"/>

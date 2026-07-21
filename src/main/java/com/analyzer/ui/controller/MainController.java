@@ -17,6 +17,10 @@ import javafx.concurrent.Task;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCodeCombination;
+import javafx.scene.input.KeyCombination;
 import javafx.scene.web.WebView;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
@@ -32,7 +36,11 @@ import java.util.List;
 public class MainController {
 
     @FXML private Button scanButton;
-    @FXML private Button exportPdfButton; // Кнопка экспорта в PDF
+    @FXML private Button exportPdfButton;
+    @FXML private Button pasteCodeButton;
+    @FXML private Button fixAllButton;
+    @FXML private Button fixCurrentFileButton;
+
     @FXML private ListView<SourceFile> filesListView;
     @FXML private TableView<Vulnerability> vulnerabilitiesTable;
     @FXML private TableColumn<Vulnerability, String> titleColumn;
@@ -43,32 +51,28 @@ public class MainController {
     @FXML private TextField promptInputField;
     @FXML private Button sendPromptButton;
 
-    @FXML private Button fixAllButton;
-    @FXML private Button fixCurrentFileButton;
-
     private final ProjectScanner projectScanner;
     private final FileAnalyzer fileAnalyzer;
     private final CodeParser codeParser;
     private final OllamaClient ollamaClient;
-    private final PdfReportService pdfReportService; // Сервис генерации PDF
+    private final PdfReportService pdfReportService;
+    private final FileFixService fileFixService;
 
     private final ObservableList<SourceFile> scannedFiles = FXCollections.observableArrayList();
 
-    // Flexmark парсеры для перевода Markdown -> HTML
+    // Flexmark парсеры для конвертации Markdown -> HTML
     private final Parser markdownParser = Parser.builder().build();
     private final HtmlRenderer htmlRenderer = HtmlRenderer.builder().build();
 
     // Накопитель HTML историй сообщений
     private final StringBuilder chatHistoryHtml = new StringBuilder();
 
-    private final FileFixService fileFixService;
-
     public MainController(ProjectScanner projectScanner,
                           FileAnalyzer fileAnalyzer,
                           CodeParser codeParser,
                           OllamaClient ollamaClient,
                           PdfReportService pdfReportService,
-                          FileFixService fileFixService) { // <-- Новый сервис
+                          FileFixService fileFixService) {
         this.projectScanner = projectScanner;
         this.fileAnalyzer = fileAnalyzer;
         this.codeParser = codeParser;
@@ -110,13 +114,24 @@ public class MainController {
             }
         });
 
+        // Привязка действий к кнопкам
+        pasteCodeButton.setOnAction(event -> handlePasteAndAnalyzeCode());
         scanButton.setOnAction(event -> handleScanButtonClick());
-        exportPdfButton.setOnAction(event -> handleExportPdfClick()); // Обработчик экспорта
+        exportPdfButton.setOnAction(event -> handleExportPdfClick());
         sendPromptButton.setOnAction(event -> handleSendPromptClick());
         promptInputField.setOnAction(event -> handleSendPromptClick());
-
         fixCurrentFileButton.setOnAction(event -> handleFixCurrentFileClick());
         fixAllButton.setOnAction(event -> handleFixAllClick());
+
+        // Перехватываем сочетание клавиш Ctrl+V в окне приложения
+        Platform.runLater(() -> {
+            if (pasteCodeButton.getScene() != null) {
+                pasteCodeButton.getScene().getAccelerators().put(
+                        new KeyCodeCombination(KeyCode.V, KeyCombination.CONTROL_DOWN),
+                        this::handlePasteAndAnalyzeCode
+                );
+            }
+        });
 
         resetChatHtml();
     }
@@ -216,6 +231,83 @@ public class MainController {
         }
     }
 
+    private void handlePasteAndAnalyzeCode() {
+        Dialog<String> dialog = new Dialog<>();
+        dialog.setTitle("Быстрый анализ кода");
+        dialog.setHeaderText("Вставьте фрагмент кода для анализа (Ctrl+V)");
+
+        ButtonType analyzeButtonType = new ButtonType("Анализировать", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(analyzeButtonType, ButtonType.CANCEL);
+
+        TextArea textArea = new TextArea();
+        textArea.setPromptText("Вставьте ваш Java/Spring код сюда...");
+        textArea.setPrefRowCount(15);
+        textArea.setPrefColumnCount(60);
+        textArea.setWrapText(true);
+
+        Clipboard clipboard = Clipboard.getSystemClipboard();
+        if (clipboard.hasString()) {
+            textArea.setText(clipboard.getString());
+        }
+
+        dialog.getDialogPane().setContent(textArea);
+        Platform.runLater(textArea::requestFocus);
+
+        dialog.setResultConverter(dialogButton -> {
+            if (dialogButton == analyzeButtonType) {
+                return textArea.getText();
+            }
+            return null;
+        });
+
+        dialog.showAndWait().ifPresent(codeContent -> {
+            if (codeContent == null || codeContent.trim().isEmpty()) {
+                Alert alert = new Alert(Alert.AlertType.WARNING, "Вставленный код пуст!");
+                alert.showAndWait();
+                return;
+            }
+
+            String snippetName = "Snippet_" + System.currentTimeMillis() + ".java";
+            SourceFile virtualFile = new SourceFile(snippetName, null, "java", codeContent.getBytes().length, codeContent);
+
+            pasteCodeButton.setDisable(true);
+            appendMessageToChatHtml("Система", "⏳ *Выполняется экспресс-анализ вставленного фрагмента кода...*");
+
+            Task<List<Vulnerability>> analyzeTask = new Task<>() {
+                @Override
+                protected List<Vulnerability> call() throws Exception {
+                    return ollamaClient.analyzeCodeChunk(codeContent);
+                }
+            };
+
+            analyzeTask.setOnSucceeded(e -> {
+                pasteCodeButton.setDisable(false);
+                List<Vulnerability> vulnerabilities = analyzeTask.getValue();
+                virtualFile.setVulnerabilities(vulnerabilities);
+
+                scannedFiles.add(virtualFile);
+                filesListView.getSelectionModel().select(virtualFile);
+
+                if (vulnerabilities.isEmpty()) {
+                    appendMessageToChatHtml("ИИ-Консультант", "✅ **Уязвимости во вставленном фрагменте кода не обнаружены!**");
+                } else {
+                    appendMessageToChatHtml("ИИ-Консультант",
+                            "⚠️ **Анализ завершен!** Обнаружено уязвимостей: **" + vulnerabilities.size() + "**.\n\n" +
+                                    "Выберите найденную уязвимость в таблице выше для консультации или нажмите **«Исправить текущий файл»**.");
+                }
+            });
+
+            analyzeTask.setOnFailed(e -> {
+                pasteCodeButton.setDisable(false);
+                appendMessageToChatHtml("Система", "❌ **Ошибка во время анализа фрагмента кода.**");
+            });
+
+            Thread thread = new Thread(analyzeTask);
+            thread.setDaemon(true);
+            thread.start();
+        });
+    }
+
     private void showVulnerabilitiesForFile(SourceFile sourceFile) {
         vulnerabilitiesTable.setItems(FXCollections.observableArrayList(sourceFile.getVulnerabilities()));
         resetChatHtml();
@@ -282,39 +374,6 @@ public class MainController {
         thread.start();
     }
 
-    private void resetChatHtml() {
-        chatHistoryHtml.setLength(0);
-        chatHistoryHtml.append("<!DOCTYPE html><html><head><style>")
-                .append("body { font-family: 'Segoe UI', Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 10px; padding: 0; }")
-                .append(".msg-card { background: #ffffff; border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }")
-                .append(".sender { font-weight: bold; font-size: 12px; color: #34495e; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }")
-                .append("p { margin: 4px 0; color: #2c3e50; font-size: 13px; line-height: 1.5; }")
-                .append("code { background: #eef2f7; color: #c0392b; padding: 2px 5px; border-radius: 4px; font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; }")
-                .append("pre { background: #1e1e1e; color: #d4d4d4; padding: 10px; border-radius: 6px; overflow-x: auto; font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; }")
-                .append("pre code { background: none; color: #d4d4d4; padding: 0; }")
-                .append("h3 { color: #c0392b; margin-top: 0; font-size: 15px; }")
-                .append("h4 { color: #2c3e50; margin: 8px 0 4px 0; font-size: 13px; }")
-                .append("</style></head><body>");
-
-        renderHtml();
-    }
-
-    private void appendMessageToChatHtml(String sender, String markdownText) {
-        String htmlContent = htmlRenderer.render(markdownParser.parse(markdownText));
-
-        chatHistoryHtml.append("<div class='msg-card'>")
-                .append("<div class='sender'>").append(sender).append("</div>")
-                .append(htmlContent)
-                .append("</div>");
-
-        renderHtml();
-    }
-
-    private void renderHtml() {
-        String fullHtml = chatHistoryHtml.toString() + "<script>window.scrollTo(0, document.body.scrollHeight);</script></body></html>";
-        Platform.runLater(() -> chatWebView.getEngine().loadContent(fullHtml));
-    }
-    // 1. Создание .txt версии для ТЕКУЩЕГО файла
     private void handleFixCurrentFileClick() {
         SourceFile selectedFile = filesListView.getSelectionModel().getSelectedItem();
 
@@ -343,17 +402,22 @@ public class MainController {
         fixTask.setOnSucceeded(e -> {
             try {
                 String fixedCode = fixTask.getValue();
-                String createdFileName = fileFixService.saveFixedVersionAsTxt(selectedFile, fixedCode);
-
                 fixCurrentFileButton.setDisable(false);
 
-                appendMessageToChatHtml("ИИ-Консультант",
-                        "✅ **Исправленный вариант сохранен!**\n\n" +
-                                "Создан файл: `" + createdFileName + "` в той же директории.\n\n" +
-                                "```java\n" + fixedCode + "\n```");
+                // Если это виртуальный сниппет из буфера (абсолютного пути на диске нет)
+                if (selectedFile.getAbsolutePath() == null) {
+                    appendMessageToChatHtml("ИИ-Консультант",
+                            "✅ **Исправленный вариант (для вставленного кода):**\n\n```java\n" + fixedCode + "\n```");
+                } else {
+                    String createdFileName = fileFixService.saveFixedVersionAsTxt(selectedFile, fixedCode);
+                    appendMessageToChatHtml("ИИ-Консультант",
+                            "✅ **Исправленный вариант сохранен!**\n\n" +
+                                    "Создан файл: `" + createdFileName + "` в той же директории.\n\n" +
+                                    "```java\n" + fixedCode + "\n```");
+                }
             } catch (Exception ex) {
                 fixCurrentFileButton.setDisable(false);
-                appendMessageToChatHtml("Система", "❌ **Ошибка сохранения .txt файла:** " + ex.getMessage());
+                appendMessageToChatHtml("Система", "❌ **Ошибка сохранения файла:** " + ex.getMessage());
             }
         });
 
@@ -362,17 +426,19 @@ public class MainController {
             appendMessageToChatHtml("Система", "❌ **Ошибка генерации исправления ИИ.**");
         });
 
-        new Thread(fixTask).start();
+        Thread thread = new Thread(fixTask);
+        thread.setDaemon(true);
+        thread.start();
     }
 
-    // 2. Создание .txt версий для ВСЕХ файлов проекта с уязвимостями
     private void handleFixAllClick() {
+        // Фильтруем только те файлы, у которых есть физический путь на диске
         List<SourceFile> problematicFiles = scannedFiles.stream()
-                .filter(f -> !f.getVulnerabilities().isEmpty())
+                .filter(f -> !f.getVulnerabilities().isEmpty() && f.getAbsolutePath() != null)
                 .toList();
 
         if (problematicFiles.isEmpty()) {
-            Alert alert = new Alert(Alert.AlertType.INFORMATION, "В проекте нет файлов с уязвимостями для исправления!");
+            Alert alert = new Alert(Alert.AlertType.INFORMATION, "В проекте нет локальных файлов с уязвимостями для сохранения!");
             alert.showAndWait();
             return;
         }
@@ -418,6 +484,41 @@ public class MainController {
             fixAllButton.setText("⚡ Исправить весь проект");
         });
 
-        new Thread(fixAllTask).start();
+        Thread thread = new Thread(fixAllTask);
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private void resetChatHtml() {
+        chatHistoryHtml.setLength(0);
+        chatHistoryHtml.append("<!DOCTYPE html><html><head><style>")
+                .append("body { font-family: 'Segoe UI', Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 10px; padding: 0; }")
+                .append(".msg-card { background: #ffffff; border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }")
+                .append(".sender { font-weight: bold; font-size: 12px; color: #34495e; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }")
+                .append("p { margin: 4px 0; color: #2c3e50; font-size: 13px; line-height: 1.5; }")
+                .append("code { background: #eef2f7; color: #c0392b; padding: 2px 5px; border-radius: 4px; font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; }")
+                .append("pre { background: #1e1e1e; color: #d4d4d4; padding: 10px; border-radius: 6px; overflow-x: auto; font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; }")
+                .append("pre code { background: none; color: #d4d4d4; padding: 0; }")
+                .append("h3 { color: #c0392b; margin-top: 0; font-size: 15px; }")
+                .append("h4 { color: #2c3e50; margin: 8px 0 4px 0; font-size: 13px; }")
+                .append("</style></head><body>");
+
+        renderHtml();
+    }
+
+    private void appendMessageToChatHtml(String sender, String markdownText) {
+        String htmlContent = htmlRenderer.render(markdownParser.parse(markdownText));
+
+        chatHistoryHtml.append("<div class='msg-card'>")
+                .append("<div class='sender'>").append(sender).append("</div>")
+                .append(htmlContent)
+                .append("</div>");
+
+        renderHtml();
+    }
+
+    private void renderHtml() {
+        String fullHtml = chatHistoryHtml.toString() + "<script>window.scrollTo(0, document.body.scrollHeight);</script></body></html>";
+        Platform.runLater(() -> chatWebView.getEngine().loadContent(fullHtml));
     }
 }
