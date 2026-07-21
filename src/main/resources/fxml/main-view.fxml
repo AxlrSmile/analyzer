@@ -3,11 +3,11 @@
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.Label?>
-<?import javafx.scene.control.ListView?>
 <?import javafx.scene.control.SplitPane?>
 <?import javafx.scene.control.TableColumn?>
 <?import javafx.scene.control.TableView?>
 <?import javafx.scene.control.TextField?>
+<?import javafx.scene.control.TreeView?>
 <?import javafx.scene.layout.AnchorPane?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.VBox?>
@@ -28,12 +28,17 @@
     <!-- Панель основных действий -->
     <HBox spacing="10.0">
         <children>
-            <Button fx:id="scanButton" maxWidth="Infinity" mnemonicParsing="false" style="-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="Выбрать проект для сканирования" HBox.hgrow="ALWAYS">
+            <Button fx:id="selectFolderButton" mnemonicParsing="false" style="-fx-background-color: #34495e; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="📁 Выбрать папку">
                 <font>
                     <Font size="14.0"/>
                 </font>
             </Button>
-            <Button fx:id="pasteCodeButton" mnemonicParsing="false" style="-fx-background-color: #9b59b6; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="📋 Анализ из буфера (Ctrl+V)">
+            <Button fx:id="scanButton" disable="true" maxWidth="Infinity" mnemonicParsing="false" style="-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="🚀 Запустить анализ выбранных" HBox.hgrow="ALWAYS">
+                <font>
+                    <Font size="14.0"/>
+                </font>
+            </Button>
+            <Button fx:id="pasteCodeButton" mnemonicParsing="false" style="-fx-background-color: #9b59b6; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="📋 Из буфера (Ctrl+V)">
                 <font>
                     <Font size="14.0"/>
                 </font>
@@ -43,7 +48,7 @@
                     <Font size="14.0"/>
                 </font>
             </Button>
-            <Button fx:id="exportPdfButton" mnemonicParsing="false" style="-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="Сохранить PDF отчет">
+            <Button fx:id="exportPdfButton" mnemonicParsing="false" style="-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="Сохранить PDF">
                 <font>
                     <Font size="14.0"/>
                 </font>
@@ -53,17 +58,17 @@
 
     <SplitPane VBox.vgrow="ALWAYS" dividerPositions="0.28" focusTraversable="true">
         <items>
-            <!-- Левая колонка: Список файлов -->
+            <!-- Левая колонка: Дерево файлов с чекбоксами -->
             <AnchorPane>
                 <children>
                     <VBox AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0" spacing="5.0">
                         <children>
-                            <Label text="Файлы проекта:" textFill="#7f8c8d">
+                            <Label text="Структура проекта (выберите файлы):" textFill="#7f8c8d">
                                 <font>
                                     <Font name="System Bold" size="12.0"/>
                                 </font>
                             </Label>
-                            <ListView VBox.vgrow="ALWAYS" fx:id="filesListView"/>
+                            <TreeView fx:id="fileTreeView" VBox.vgrow="ALWAYS" />
                         </children>
                     </VBox>
                 </children>

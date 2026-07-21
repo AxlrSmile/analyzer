@@ -16,15 +16,14 @@ import javafx.collections.ObservableList;
 import javafx.concurrent.Task;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
+import javafx.scene.control.cell.CheckBoxTreeCell;
 import javafx.scene.control.cell.PropertyValueFactory;
-import javafx.scene.input.Clipboard;
-import javafx.scene.input.KeyCode;
-import javafx.scene.input.KeyCodeCombination;
-import javafx.scene.input.KeyCombination;
+import javafx.scene.input.*;
 import javafx.scene.web.WebView;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
+import javafx.util.StringConverter;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
@@ -35,13 +34,14 @@ import java.util.List;
 @Component
 public class MainController {
 
+    @FXML private Button selectFolderButton;
     @FXML private Button scanButton;
     @FXML private Button exportPdfButton;
     @FXML private Button pasteCodeButton;
     @FXML private Button fixAllButton;
     @FXML private Button fixCurrentFileButton;
 
-    @FXML private ListView<SourceFile> filesListView;
+    @FXML private TreeView<File> fileTreeView;
     @FXML private TableView<Vulnerability> vulnerabilitiesTable;
     @FXML private TableColumn<Vulnerability, String> titleColumn;
     @FXML private TableColumn<Vulnerability, String> severityColumn;
@@ -59,12 +59,10 @@ public class MainController {
     private final FileFixService fileFixService;
 
     private final ObservableList<SourceFile> scannedFiles = FXCollections.observableArrayList();
+    private File selectedProjectFolder = null;
 
-    // Flexmark парсеры для конвертации Markdown -> HTML
     private final Parser markdownParser = Parser.builder().build();
     private final HtmlRenderer htmlRenderer = HtmlRenderer.builder().build();
-
-    // Накопитель HTML историй сообщений
     private final StringBuilder chatHistoryHtml = new StringBuilder();
 
     public MainController(ProjectScanner projectScanner,
@@ -87,24 +85,66 @@ public class MainController {
         severityColumn.setCellValueFactory(new PropertyValueFactory<>("severity"));
         linesColumn.setCellValueFactory(new PropertyValueFactory<>("lineRange"));
 
-        filesListView.setItems(scannedFiles);
+        // Кастомные ячейки дерева с чекбоксами и динамической подсветкой найденных уязвимостей
+        fileTreeView.setCellFactory(tv -> new CheckBoxTreeCell<File>(
+                item -> item instanceof CheckBoxTreeItem<File> cb ? cb.selectedProperty() : null,
+                new StringConverter<TreeItem<File>>() {
+                    @Override
+                    public String toString(TreeItem<File> treeItem) {
+                        return (treeItem != null && treeItem.getValue() != null) ? treeItem.getValue().getName() : "";
+                    }
 
-        filesListView.setCellFactory(param -> new ListCell<>() {
+                    @Override
+                    public TreeItem<File> fromString(String string) {
+                        return null;
+                    }
+                }
+        ) {
             @Override
-            protected void updateItem(SourceFile item, boolean empty) {
+            public void updateItem(File item, boolean empty) {
                 super.updateItem(item, empty);
+
                 if (empty || item == null) {
                     setText(null);
+                    setGraphic(null);
+                    setStyle("");
+                    return;
+                }
+
+                // Проверяем, просканирован ли данный файл
+                SourceFile matchedFile = scannedFiles.stream()
+                        .filter(sf -> sf.getAbsolutePath() != null && sf.getAbsolutePath().equals(item.getAbsolutePath()))
+                        .findFirst()
+                        .orElse(null);
+
+                if (item.isFile() && matchedFile != null) {
+                    int vulnCount = matchedFile.getVulnerabilities() != null ? matchedFile.getVulnerabilities().size() : 0;
+
+                    if (vulnCount > 0) {
+                        // Файл содержит уязвимости: красный цвет + количество
+                        setText(item.getName() + " ⚠️ (" + vulnCount + ")");
+                        setStyle("-fx-text-fill: #c0392b; -fx-font-weight: bold;");
+                    } else {
+                        // Чистый файл: зеленый цвет
+                        setText(item.getName() + " ✅");
+                        setStyle("-fx-text-fill: #27ae60; -fx-font-weight: normal;");
+                    }
                 } else {
-                    long count = item.getVulnerabilities().size();
-                    setText(item.getName() + (count > 0 ? " [!] (" + count + ")" : " (ОК)"));
+                    // Папки или еще не просканированные файлы
+                    setText(item.getName());
+                    setStyle("-fx-text-fill: #2c3e50;");
                 }
             }
         });
 
-        filesListView.getSelectionModel().selectedItemProperty().addListener((obs, oldSelection, newSelection) -> {
-            if (newSelection != null) {
-                showVulnerabilitiesForFile(newSelection);
+        // Отслеживание выбора файла в дереве для вывода уязвимостей в таблицу
+        fileTreeView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal != null && newVal.getValue() != null && newVal.getValue().isFile()) {
+                File selectedFile = newVal.getValue();
+                scannedFiles.stream()
+                        .filter(sf -> sf.getAbsolutePath() != null && sf.getAbsolutePath().equals(selectedFile.getAbsolutePath()))
+                        .findFirst()
+                        .ifPresent(this::showVulnerabilitiesForFile);
             }
         });
 
@@ -114,16 +154,17 @@ public class MainController {
             }
         });
 
-        // Привязка действий к кнопкам
+        // Привязка событий к кнопкам
+        selectFolderButton.setOnAction(event -> handleSelectFolderClick());
+        scanButton.setOnAction(event -> handleStartScanClick());
         pasteCodeButton.setOnAction(event -> handlePasteAndAnalyzeCode());
-        scanButton.setOnAction(event -> handleScanButtonClick());
         exportPdfButton.setOnAction(event -> handleExportPdfClick());
         sendPromptButton.setOnAction(event -> handleSendPromptClick());
         promptInputField.setOnAction(event -> handleSendPromptClick());
         fixCurrentFileButton.setOnAction(event -> handleFixCurrentFileClick());
         fixAllButton.setOnAction(event -> handleFixAllClick());
 
-        // Перехватываем сочетание клавиш Ctrl+V в окне приложения
+        // Горячая клавиша Ctrl+V для вставки кода из буфера обмена
         Platform.runLater(() -> {
             if (pasteCodeButton.getScene() != null) {
                 pasteCodeButton.getScene().getAccelerators().put(
@@ -136,70 +177,148 @@ public class MainController {
         resetChatHtml();
     }
 
-    private void handleScanButtonClick() {
+    /**
+     * Выбор папки проекта и построение дерева с чекбоксами
+     */
+    private void handleSelectFolderClick() {
         DirectoryChooser directoryChooser = new DirectoryChooser();
-        directoryChooser.setTitle("Выберите папку с исходным кодом проекта");
+        directoryChooser.setTitle("Выберите папку с исходным кодом");
+        Stage stage = (Stage) selectFolderButton.getScene().getWindow();
+        File folder = directoryChooser.showDialog(stage);
 
-        Stage stage = (Stage) scanButton.getScene().getWindow();
-        File selectedDirectory = directoryChooser.showDialog(stage);
-
-        if (selectedDirectory != null) {
-            scannedFiles.clear();
-            vulnerabilitiesTable.getItems().clear();
-            resetChatHtml();
-
-            scanButton.setDisable(true);
-            scanButton.setText("Идет интеллектуальный анализ ИИ... Пожалуйста, подождите");
-
-            Task<Void> scanTask = new Task<>() {
-                @Override
-                protected Void call() throws Exception {
-                    List<File> rawFiles = projectScanner.scanDirectory(selectedDirectory);
-
-                    for (File file : rawFiles) {
-                        try {
-                            SourceFile sourceFile = fileAnalyzer.analyzeFile(file);
-                            List<String> chunks = codeParser.splitIntoChunks(sourceFile);
-                            List<Vulnerability> allFileVulns = new ArrayList<>();
-
-                            for (String chunk : chunks) {
-                                List<Vulnerability> chunkVulns = ollamaClient.analyzeCodeChunk(chunk);
-                                allFileVulns.addAll(chunkVulns);
-                            }
-
-                            sourceFile.setVulnerabilities(allFileVulns);
-                            Platform.runLater(() -> scannedFiles.add(sourceFile));
-
-                        } catch (IOException e) {
-                            System.err.println("Ошибка при анализе файла " + file.getName() + ": " + e.getMessage());
-                        }
-                    }
-                    return null;
-                }
-            };
-
-            scanTask.setOnSucceeded(e -> {
-                scanButton.setDisable(false);
-                scanButton.setText("Выбрать проект для сканирования");
-            });
-
-            scanTask.setOnFailed(e -> {
-                scanButton.setDisable(false);
-                scanButton.setText("Выбрать проект для сканирования");
-            });
-
-            Thread thread = new Thread(scanTask);
-            thread.setDaemon(true);
-            thread.start();
+        if (folder != null && folder.exists()) {
+            this.selectedProjectFolder = folder;
+            buildFileTree(folder);
+            scanButton.setDisable(false);
+            appendMessageToChatHtml("Система", "📁 Загружен проект: `" + folder.getName() + "`. Выберите файлы/папки в дереве и нажмите **«Запустить анализ выбранных»**.");
         }
+    }
+
+    private void buildFileTree(File rootFolder) {
+        CheckBoxTreeItem<File> rootItem = createTreeItem(rootFolder);
+        rootItem.setExpanded(true);
+        fileTreeView.setRoot(rootItem);
+        fileTreeView.setShowRoot(true);
+    }
+
+    private CheckBoxTreeItem<File> createTreeItem(File file) {
+        CheckBoxTreeItem<File> item = new CheckBoxTreeItem<>(file);
+        item.setSelected(true); // По умолчанию все элементы выбраны
+
+        if (file.isDirectory()) {
+            File[] files = file.listFiles();
+            if (files != null) {
+                for (File child : files) {
+                    if (!child.getName().startsWith(".") && !child.getName().equalsIgnoreCase("target") && !child.getName().equalsIgnoreCase("build")) {
+                        item.getChildren().add(createTreeItem(child));
+                    }
+                }
+            }
+        }
+        return item;
+    }
+
+    /**
+     * Анализ только отмеченных чекбоксами файлов
+     */
+    private void handleStartScanClick() {
+        if (fileTreeView.getRoot() == null) return;
+
+        List<File> selectedFiles = new ArrayList<>();
+        collectSelectedFiles((CheckBoxTreeItem<File>) fileTreeView.getRoot(), selectedFiles);
+
+        if (selectedFiles.isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.WARNING, "Вы не выбрали ни одного файла для анализа!");
+            alert.showAndWait();
+            return;
+        }
+
+        scannedFiles.clear();
+        vulnerabilitiesTable.getItems().clear();
+        resetChatHtml();
+
+        scanButton.setDisable(true);
+        selectFolderButton.setDisable(true);
+        scanButton.setText("Идет анализ (" + selectedFiles.size() + " файлов)...");
+
+        Task<Void> scanTask = new Task<>() {
+            @Override
+            protected Void call() throws Exception {
+                for (File file : selectedFiles) {
+                    try {
+                        SourceFile sourceFile = fileAnalyzer.analyzeFile(file);
+                        List<String> chunks = codeParser.splitIntoChunks(sourceFile);
+                        List<Vulnerability> allFileVulns = new ArrayList<>();
+
+                        for (String chunk : chunks) {
+                            List<Vulnerability> chunkVulns = ollamaClient.analyzeCodeChunk(chunk);
+                            allFileVulns.addAll(chunkVulns);
+                        }
+
+                        sourceFile.setVulnerabilities(allFileVulns);
+                        Platform.runLater(() -> scannedFiles.add(sourceFile));
+
+                    } catch (IOException e) {
+                        System.err.println("Ошибка при анализе файла " + file.getName() + ": " + e.getMessage());
+                    }
+                }
+                return null;
+            }
+        };
+
+        scanTask.setOnSucceeded(e -> {
+            scanButton.setDisable(false);
+            selectFolderButton.setDisable(false);
+            scanButton.setText("🚀 Запустить анализ выбранных");
+
+            // Обновляем отображение дерева, чтобы применились статусы ⚠️ и ✅
+            fileTreeView.refresh();
+
+            appendMessageToChatHtml("Система", "✅ **Анализ выбранных файлов завершен!** Просканировано файлов: " + scannedFiles.size());
+        });
+
+        scanTask.setOnFailed(e -> {
+            scanButton.setDisable(false);
+            selectFolderButton.setDisable(false);
+            scanButton.setText("🚀 Запустить анализ выбранных");
+            appendMessageToChatHtml("Система", "❌ **Ошибка во время анализа файлов.**");
+        });
+
+        Thread thread = new Thread(scanTask);
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private void collectSelectedFiles(CheckBoxTreeItem<File> item, List<File> result) {
+        if (item.isSelected() || item.isIndeterminate()) {
+            File file = item.getValue();
+            if (file != null && file.isFile()) {
+                result.add(file);
+            }
+            for (TreeItem<File> child : item.getChildren()) {
+                collectSelectedFiles((CheckBoxTreeItem<File>) child, result);
+            }
+        }
+    }
+
+    private void showVulnerabilitiesForFile(SourceFile sourceFile) {
+        vulnerabilitiesTable.setItems(FXCollections.observableArrayList(sourceFile.getVulnerabilities()));
+        resetChatHtml();
+    }
+
+    private void showVulnerabilityDetails(Vulnerability vulnerability) {
+        resetChatHtml();
+        String markdownReport = String.format(
+                "### ⚠️ %s\n\n**Критичность:** `%s`  \n**Диапазон строк:** `%s`\n\n#### Описание:\n%s\n\n#### Рекомендация:\n%s",
+                vulnerability.getTitle(), vulnerability.getSeverity(), vulnerability.getLineRange(),
+                vulnerability.getDescription(), vulnerability.getRecommendation()
+        );
+        appendMessageToChatHtml("ИИ-Анализатор", markdownReport);
     }
 
     private void handleExportPdfClick() {
         if (scannedFiles.isEmpty()) {
-            Alert alert = new Alert(Alert.AlertType.WARNING);
-            alert.setTitle("Внимание");
-            alert.setHeaderText(null);
-            alert.setContentText("Сначала необходимо просканировать проект!");
+            Alert alert = new Alert(Alert.AlertType.WARNING, "Сначала необходимо просканировать проект!");
             alert.showAndWait();
             return;
         }
@@ -215,17 +334,10 @@ public class MainController {
         if (saveFile != null) {
             try {
                 pdfReportService.generatePdfReport(scannedFiles, saveFile.getAbsolutePath());
-
-                Alert alert = new Alert(Alert.AlertType.INFORMATION);
-                alert.setTitle("Успех");
-                alert.setHeaderText(null);
-                alert.setContentText("PDF-отчет успешно сформирован и сохранен!");
+                Alert alert = new Alert(Alert.AlertType.INFORMATION, "PDF-отчет успешно сформирован и сохранен!");
                 alert.showAndWait();
             } catch (Exception e) {
-                Alert alert = new Alert(Alert.AlertType.ERROR);
-                alert.setTitle("Ошибка");
-                alert.setHeaderText(null);
-                alert.setContentText("Не удалось создать PDF-отчет: " + e.getMessage());
+                Alert alert = new Alert(Alert.AlertType.ERROR, "Не удалось создать PDF-отчет: " + e.getMessage());
                 alert.showAndWait();
             }
         }
@@ -253,19 +365,10 @@ public class MainController {
         dialog.getDialogPane().setContent(textArea);
         Platform.runLater(textArea::requestFocus);
 
-        dialog.setResultConverter(dialogButton -> {
-            if (dialogButton == analyzeButtonType) {
-                return textArea.getText();
-            }
-            return null;
-        });
+        dialog.setResultConverter(dialogButton -> dialogButton == analyzeButtonType ? textArea.getText() : null);
 
         dialog.showAndWait().ifPresent(codeContent -> {
-            if (codeContent == null || codeContent.trim().isEmpty()) {
-                Alert alert = new Alert(Alert.AlertType.WARNING, "Вставленный код пуст!");
-                alert.showAndWait();
-                return;
-            }
+            if (codeContent == null || codeContent.trim().isEmpty()) return;
 
             String snippetName = "Snippet_" + System.currentTimeMillis() + ".java";
             SourceFile virtualFile = new SourceFile(snippetName, null, "java", codeContent.getBytes().length, codeContent);
@@ -284,16 +387,12 @@ public class MainController {
                 pasteCodeButton.setDisable(false);
                 List<Vulnerability> vulnerabilities = analyzeTask.getValue();
                 virtualFile.setVulnerabilities(vulnerabilities);
-
                 scannedFiles.add(virtualFile);
-                filesListView.getSelectionModel().select(virtualFile);
 
                 if (vulnerabilities.isEmpty()) {
                     appendMessageToChatHtml("ИИ-Консультант", "✅ **Уязвимости во вставленном фрагменте кода не обнаружены!**");
                 } else {
-                    appendMessageToChatHtml("ИИ-Консультант",
-                            "⚠️ **Анализ завершен!** Обнаружено уязвимостей: **" + vulnerabilities.size() + "**.\n\n" +
-                                    "Выберите найденную уязвимость в таблице выше для консультации или нажмите **«Исправить текущий файл»**.");
+                    appendMessageToChatHtml("ИИ-Консультант", "⚠️ **Анализ завершен!** Обнаружено уязвимостей: **" + vulnerabilities.size() + "**.");
                 }
             });
 
@@ -308,45 +407,25 @@ public class MainController {
         });
     }
 
-    private void showVulnerabilitiesForFile(SourceFile sourceFile) {
-        vulnerabilitiesTable.setItems(FXCollections.observableArrayList(sourceFile.getVulnerabilities()));
-        resetChatHtml();
-    }
-
-    private void showVulnerabilityDetails(Vulnerability vulnerability) {
-        resetChatHtml();
-
-        String markdownReport = String.format(
-                "### ⚠️ %s\n\n" +
-                        "**Критичность:** `%s`  \n" +
-                        "**Диапазон строк:** `%s`\n\n" +
-                        "#### Описание:\n%s\n\n" +
-                        "#### Рекомендация по исправлению:\n%s",
-                vulnerability.getTitle(),
-                vulnerability.getSeverity(),
-                vulnerability.getLineRange(),
-                vulnerability.getDescription(),
-                vulnerability.getRecommendation()
-        );
-
-        appendMessageToChatHtml("ИИ-Анализатор", markdownReport);
-    }
-
     private void handleSendPromptClick() {
         String question = promptInputField.getText().trim();
-        SourceFile selectedFile = filesListView.getSelectionModel().getSelectedItem();
+        TreeItem<File> selectedTreeItem = fileTreeView.getSelectionModel().getSelectedItem();
         Vulnerability selectedVuln = vulnerabilitiesTable.getSelectionModel().getSelectedItem();
 
         if (question.isEmpty()) return;
 
-        if (selectedFile == null || selectedVuln == null) {
-            Alert alert = new Alert(Alert.AlertType.WARNING);
-            alert.setTitle("Внимание");
-            alert.setHeaderText(null);
-            alert.setContentText("Пожалуйста, выберите файл и конкретную уязвимость в таблице!");
+        if (selectedTreeItem == null || selectedTreeItem.getValue() == null || selectedVuln == null) {
+            Alert alert = new Alert(Alert.AlertType.WARNING, "Пожалуйста, выберите файл в дереве и конкретную уязвимость в таблице!");
             alert.showAndWait();
             return;
         }
+
+        SourceFile selectedSourceFile = scannedFiles.stream()
+                .filter(sf -> sf.getAbsolutePath() != null && sf.getAbsolutePath().equals(selectedTreeItem.getValue().getAbsolutePath()))
+                .findFirst()
+                .orElse(null);
+
+        if (selectedSourceFile == null) return;
 
         appendMessageToChatHtml("Вы", question);
         promptInputField.clear();
@@ -355,7 +434,7 @@ public class MainController {
         Task<String> chatTask = new Task<>() {
             @Override
             protected String call() {
-                return ollamaClient.askQuestionAboutVulnerability(selectedFile, selectedVuln, question);
+                return ollamaClient.askQuestionAboutVulnerability(selectedSourceFile, selectedVuln, question);
             }
         };
 
@@ -375,16 +454,20 @@ public class MainController {
     }
 
     private void handleFixCurrentFileClick() {
-        SourceFile selectedFile = filesListView.getSelectionModel().getSelectedItem();
-
-        if (selectedFile == null) {
-            Alert alert = new Alert(Alert.AlertType.WARNING, "Сначала выберите файл из списка слева!");
+        TreeItem<File> selectedTreeItem = fileTreeView.getSelectionModel().getSelectedItem();
+        if (selectedTreeItem == null || selectedTreeItem.getValue() == null) {
+            Alert alert = new Alert(Alert.AlertType.WARNING, "Сначала выберите файл из дерева слева!");
             alert.showAndWait();
             return;
         }
 
-        if (selectedFile.getVulnerabilities().isEmpty()) {
-            Alert alert = new Alert(Alert.AlertType.INFORMATION, "В этом файле не найдено уязвимостей!");
+        SourceFile selectedFile = scannedFiles.stream()
+                .filter(sf -> sf.getAbsolutePath() != null && sf.getAbsolutePath().equals(selectedTreeItem.getValue().getAbsolutePath()))
+                .findFirst()
+                .orElse(null);
+
+        if (selectedFile == null || selectedFile.getVulnerabilities().isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.INFORMATION, "В этом файле уязвимости не найдены!");
             alert.showAndWait();
             return;
         }
@@ -403,18 +486,8 @@ public class MainController {
             try {
                 String fixedCode = fixTask.getValue();
                 fixCurrentFileButton.setDisable(false);
-
-                // Если это виртуальный сниппет из буфера (абсолютного пути на диске нет)
-                if (selectedFile.getAbsolutePath() == null) {
-                    appendMessageToChatHtml("ИИ-Консультант",
-                            "✅ **Исправленный вариант (для вставленного кода):**\n\n```java\n" + fixedCode + "\n```");
-                } else {
-                    String createdFileName = fileFixService.saveFixedVersionAsTxt(selectedFile, fixedCode);
-                    appendMessageToChatHtml("ИИ-Консультант",
-                            "✅ **Исправленный вариант сохранен!**\n\n" +
-                                    "Создан файл: `" + createdFileName + "` в той же директории.\n\n" +
-                                    "```java\n" + fixedCode + "\n```");
-                }
+                String createdFileName = fileFixService.saveFixedVersionAsTxt(selectedFile, fixedCode);
+                appendMessageToChatHtml("ИИ-Консультант", "✅ **Исправленный вариант сохранен в файл:** `" + createdFileName + "`\n\n```java\n" + fixedCode + "\n```");
             } catch (Exception ex) {
                 fixCurrentFileButton.setDisable(false);
                 appendMessageToChatHtml("Система", "❌ **Ошибка сохранения файла:** " + ex.getMessage());
@@ -432,36 +505,31 @@ public class MainController {
     }
 
     private void handleFixAllClick() {
-        // Фильтруем только те файлы, у которых есть физический путь на диске
         List<SourceFile> problematicFiles = scannedFiles.stream()
                 .filter(f -> !f.getVulnerabilities().isEmpty() && f.getAbsolutePath() != null)
                 .toList();
 
         if (problematicFiles.isEmpty()) {
-            Alert alert = new Alert(Alert.AlertType.INFORMATION, "В проекте нет локальных файлов с уязвимостями для сохранения!");
+            Alert alert = new Alert(Alert.AlertType.INFORMATION, "Нет просканированных файлов с уязвимостями!");
             alert.showAndWait();
             return;
         }
 
-        Alert confirmAlert = new Alert(Alert.AlertType.CONFIRMATION,
-                "Для " + problematicFiles.size() + " файлов с уязвимостями будут созданы исправленные копии (.txt) в их директориях. Продолжить?",
-                ButtonType.YES, ButtonType.NO);
-        confirmAlert.showAndWait();
-
-        if (confirmAlert.getResult() != ButtonType.YES) return;
-
         fixAllButton.setDisable(true);
-        fixAllButton.setText("Идет генерация .txt исправлений...");
 
         Task<Void> fixAllTask = new Task<>() {
             @Override
             protected Void call() throws Exception {
-                for (SourceFile file : problematicFiles) {
+                int total = problematicFiles.size();
+                for (int i = 0; i < total; i++) {
+                    SourceFile file = problematicFiles.get(i);
+                    int currentNum = i + 1;
+                    Platform.runLater(() -> fixAllButton.setText("Исправление (" + currentNum + "/" + total + ")..."));
                     try {
                         String fixedCode = ollamaClient.fixSourceFile(file);
                         fileFixService.saveFixedVersionAsTxt(file, fixedCode);
                     } catch (Exception e) {
-                        System.err.println("Ошибка при генерации .txt для " + file.getName() + ": " + e.getMessage());
+                        System.err.println("Ошибка генерации для " + file.getName() + ": " + e.getMessage());
                     }
                 }
                 return null;
@@ -471,11 +539,7 @@ public class MainController {
         fixAllTask.setOnSucceeded(e -> {
             fixAllButton.setDisable(false);
             fixAllButton.setText("⚡ Исправить весь проект");
-
-            Alert alert = new Alert(Alert.AlertType.INFORMATION);
-            alert.setTitle("Успех");
-            alert.setHeaderText(null);
-            alert.setContentText("Исправленные варианты (.txt) успешно созданы рядом с исходными файлами!");
+            Alert alert = new Alert(Alert.AlertType.INFORMATION, "Исправленные варианты (.txt) успешно созданы!");
             alert.showAndWait();
         });
 
