@@ -8,11 +8,13 @@
 <?import javafx.scene.control.TableColumn?>
 <?import javafx.scene.control.TableView?>
 <?import javafx.scene.control.TextArea?>
+<?import javafx.scene.control.TextField?>
 <?import javafx.scene.layout.AnchorPane?>
+<?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.VBox?>
 <?import javafx.scene.text.Font?>
 
-<VBox prefHeight="650.0" prefWidth="1000.0" spacing="10.0" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.analyzer.ui.controller.MainController">
+<VBox prefHeight="700.0" prefWidth="1050.0" spacing="10.0" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.analyzer.ui.controller.MainController">
     <padding>
         <Insets bottom="15.0" left="15.0" right="15.0" top="15.0" />
     </padding>
@@ -29,7 +31,7 @@
         </font>
     </Button>
 
-    <SplitPane dividerPositions="0.3" focusTraversable="true" prefHeight="-1.0" prefWidth="-1.0" VBox.vgrow="ALWAYS">
+    <SplitPane dividerPositions="0.28" focusTraversable="true" VBox.vgrow="ALWAYS">
         <items>
             <!-- Левая колонка: Список файлов -->
             <AnchorPane>
@@ -47,12 +49,12 @@
                 </children>
             </AnchorPane>
 
-            <!-- Правая колонка: Детали уязвимостей -->
+            <!-- Правая колонка -->
             <AnchorPane>
                 <children>
-                    <SplitPane dividerPositions="0.6" orientation="VERTICAL" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
+                    <SplitPane dividerPositions="0.4" orientation="VERTICAL" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
                         <items>
-                            <!-- Верхняя часть правой панели: Таблица -->
+                            <!-- Верхняя часть: Таблица уязвимостей -->
                             <VBox spacing="5.0">
                                 <children>
                                     <Label text="Найденные уязвимости:" textFill="#cc0000">
@@ -62,23 +64,35 @@
                                     </Label>
                                     <TableView fx:id="vulnerabilitiesTable" VBox.vgrow="ALWAYS">
                                         <columns>
-                                            <TableColumn fx:id="titleColumn" prefWidth="180.0" text="Уязвимость" />
-                                            <TableColumn fx:id="severityColumn" prefWidth="90.0" text="Критичность" />
+                                            <TableColumn fx:id="titleColumn" prefWidth="200.0" text="Уязвимость" />
+                                            <TableColumn fx:id="severityColumn" prefWidth="100.0" text="Критичность" />
                                             <TableColumn fx:id="linesColumn" prefWidth="80.0" text="Строки" />
                                         </columns>
                                     </TableView>
                                 </children>
                             </VBox>
 
-                            <!-- Нижняя часть правой панели: Подробное описание -->
-                            <VBox spacing="5.0">
+                            <!-- Нижняя часть: Детали + ИИ Чат -->
+                            <VBox spacing="8.0">
+                                <padding>
+                                    <Insets top="5.0" />
+                                </padding>
                                 <children>
-                                    <Label text="Детали и рекомендации по исправлению:" textFill="#2c3e50">
+                                    <Label text="Детали уязвимости и диалог с ИИ-Консультантом:" textFill="#2c3e50">
                                         <font>
                                             <Font name="System Bold" size="12.0" />
                                         </font>
                                     </Label>
+                                    <!-- Окно истории чата -->
                                     <TextArea fx:id="detailsTextArea" editable="false" wrapText="true" VBox.vgrow="ALWAYS" />
+
+                                    <!-- Панель ввода вопроса -->
+                                    <HBox spacing="8.0">
+                                        <children>
+                                            <TextField fx:id="promptInputField" promptText="Задайте вопрос по этой уязвимости (напр., 'Напиши пример исправленного кода')..." HBox.hgrow="ALWAYS" />
+                                            <Button fx:id="sendPromptButton" mnemonicParsing="false" style="-fx-background-color: #2ecc71; -fx-text-fill: white; -fx-font-weight: bold;" text="Отправить" />
+                                        </children>
+                                    </HBox>
                                 </children>
                             </VBox>
                         </items>

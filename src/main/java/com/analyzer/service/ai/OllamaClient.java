@@ -1,5 +1,6 @@
 package com.analyzer.service.ai;
 
+import com.analyzer.domain.model.SourceFile;
 import com.analyzer.domain.model.Vulnerability;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -36,21 +37,23 @@ public class OllamaClient {
 
     public List<Vulnerability> analyzeCodeChunk(String codeChunk) {
         String systemPrompt = """
-            You are a Senior Application Security Auditor. Analyze the provided source code chunk for security vulnerabilities.
-            You must look for: SQL Injection, XSS, Authentication problems, Weak Cryptography, Hardcoded Secrets, Vulnerable Dependencies.
+            Вы — старший аудитор по информационной безопасности приложений. Проанализируйте предоставленный фрагмент исходного кода на наличие уязвимостей.
+            Вы должны искать следующие проблемы: SQL-инъекции, XSS, проблемы аутентификации, слабая криптография, зашитые секреты (hardcoded secrets), уязвимые зависимости.
     
-            CRITICAL RULE: Any hardcoded credentials, static URLs (like http://localhost:11434), or hardcoded configuration values (like AI model names) MUST be flagged as a 'Hardcoded Secrets' or 'Improper Configuration' vulnerability with HIGH or MEDIUM severity.
+            КРИТИЧЕСКОЕ ПРАВИЛО: Любые зашитые учетные данные, статические URL-адреса локальных сервисов (например, http://localhost:11434) или зашитые параметры конфигурации (например, имена моделей ИИ) ОБЯЗАТЕЛЬНО должны помечаться как уязвимость 'Зашитые секреты' или 'Неправильная конфигурация' с уровнем критичности HIGH или MEDIUM.
     
-            You must return ONLY a JSON array of objects, OR a JSON object containing a "vulnerabilities" array.
-            Each vulnerability object must have exactly these fields:
-            - "title": short name of vulnerability
-            - "severity": HIGH, MEDIUM, or LOW
-            - "description": precise explanation
-            - "lineRange": approximate lines in the chunk (e.g. "15-18") or "Unknown"
-            - "recommendation": how to fix it
+            ВЫ ДОЛЖНЫ ОТВЕЧАТЬ ИСКЛЮЧИТЕЛЬНО НА РУССКОМ ЯЗЫКЕ (поля title, severity, description, recommendation).
     
-            If no vulnerabilities are found, return an empty JSON array: []
-         """;
+            Вы должны вернуть ТОЛЬКО массив JSON из объектов ИЛИ объект JSON, содержащий массив с ключом "vulnerabilities".
+            Каждый объект уязвимости должен иметь строго следующие поля (имена полей остаются на английском!):
+            - "title": краткое название уязвимости на русском
+            - "severity": строго одно из значений: HIGH, MEDIUM или LOW
+            - "description": подробное объяснение проблемы на русском
+            - "lineRange": примерный диапазон строк в фрагменте (например, "15-18") или "Неизвестно"
+            - "recommendation": четкая инструкция по исправлению на русском
+    
+            Если уязвимости не найдены, верните пустой массив JSON: []
+    """;
 
         try {
             Map<String, Object> options = Map.of(
@@ -114,6 +117,76 @@ public class OllamaClient {
                 Thread.currentThread().interrupt();
             }
             return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Консультация с ИИ по конкретной найденной уязвимости.
+     */
+    public String askQuestionAboutVulnerability(SourceFile sourceFile, Vulnerability vulnerability, String userQuestion) {
+        String systemPrompt = """
+            Вы — Senior Java/Security Engineer. Ваша задача — проконсультировать разработчика по найденной уязвимости в его коде.
+            Давайте четкие, профессиональные и исчерпывающие ответы НА РУССКОМ ЯЗЫКЕ.
+            Если пользователь просит пример кода — приведите полностью исправленный и безопасный вариант этого фрагмента кода с комментариями.
+            """;
+
+        String prompt = String.format("""
+            Контекст файла: %s
+            Уязвимость: %s (Критичность: %s, Строки: %s)
+            Описание проблемы: %s
+            
+            Исходный код файла:
+            ```
+            %s
+            ```
+            
+            Вопрос разработчика: %s
+            """,
+                sourceFile.getName(),
+                vulnerability.getTitle(),
+                vulnerability.getSeverity(),
+                vulnerability.getLineRange(),
+                vulnerability.getDescription(),
+                sourceFile.getContent(),
+                userQuestion
+        );
+
+        try {
+            Map<String, Object> options = Map.of(
+                    "temperature", 0.2 // Небольшая гибкость для генерации примеров кода
+            );
+
+            Map<String, Object> requestBody = Map.of(
+                    "model", MODEL_NAME,
+                    "prompt", prompt,
+                    "system", systemPrompt,
+                    "stream", false,
+                    "options", options
+            );
+
+            String jsonPayload = objectMapper.writeValueAsString(requestBody);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(OLLAMA_URL))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
+                    .timeout(Duration.ofMinutes(3))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() == 200) {
+                JsonNode rootNode = objectMapper.readTree(response.body());
+                return rootNode.get("response").asText().trim();
+            } else {
+                return "Ошибка обращения к ИИ: код ответа " + response.statusCode();
+            }
+
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            return "Ошибка связи с Ollama: " + e.getMessage();
         }
     }
 }
