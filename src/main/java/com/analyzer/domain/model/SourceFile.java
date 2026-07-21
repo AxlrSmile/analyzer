@@ -24,4 +24,17 @@ public class SourceFile {
         this.content = content;
         // vulnerabilities инициализируется как пустой ArrayList по умолчанию
     }
+
+    // Автоматический расчет строк кода на основе содержимого
+    public long getLinesOfCode() {
+        if (content == null || content.isEmpty()) {
+            return 0;
+        }
+        return content.lines().count();
+    }
+
+    // Возвращает путь файла
+    public String getRelativePath() {
+        return absolutePath != null ? absolutePath : name;
+    }
 }

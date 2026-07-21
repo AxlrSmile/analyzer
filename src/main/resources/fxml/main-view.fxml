@@ -7,43 +7,53 @@
 <?import javafx.scene.control.SplitPane?>
 <?import javafx.scene.control.TableColumn?>
 <?import javafx.scene.control.TableView?>
-<?import javafx.scene.control.TextArea?>
 <?import javafx.scene.control.TextField?>
 <?import javafx.scene.layout.AnchorPane?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.VBox?>
+<?import javafx.scene.web.WebView?>
 <?import javafx.scene.text.Font?>
 
-<VBox prefHeight="700.0" prefWidth="1050.0" spacing="10.0" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.analyzer.ui.controller.MainController">
+<VBox fx:controller="com.analyzer.ui.controller.MainController" prefHeight="750.0" prefWidth="1100.0" spacing="10.0" style="-fx-background-color: #f4f6f9;" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1">
     <padding>
-        <Insets bottom="15.0" left="15.0" right="15.0" top="15.0" />
+        <Insets bottom="15.0" left="15.0" right="15.0" top="15.0"/>
     </padding>
 
     <Label text="Локальный ИИ-Анализатор Безопасности Исходного Кода" textFill="#2c3e50">
         <font>
-            <Font name="System Bold" size="18.0" />
+            <Font name="System Bold" size="18.0"/>
         </font>
     </Label>
 
-    <Button fx:id="scanButton" maxWidth="Infinity" mnemonicParsing="false" style="-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-weight: bold;" text="Выбрать проект для сканирования">
-        <font>
-            <Font size="14.0" />
-        </font>
-    </Button>
+    <!-- Панель основных действий: Сканирование + Экспорт в PDF -->
+    <HBox spacing="10.0">
+        <children>
+            <Button fx:id="scanButton" maxWidth="Infinity" mnemonicParsing="false" style="-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="Выбрать проект для сканирования" HBox.hgrow="ALWAYS">
+                <font>
+                    <Font size="14.0"/>
+                </font>
+            </Button>
+            <Button fx:id="exportPdfButton" mnemonicParsing="false" style="-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="Сохранить PDF отчет">
+                <font>
+                    <Font size="14.0"/>
+                </font>
+            </Button>
+        </children>
+    </HBox>
 
-    <SplitPane dividerPositions="0.28" focusTraversable="true" VBox.vgrow="ALWAYS">
+    <SplitPane VBox.vgrow="ALWAYS" dividerPositions="0.28" focusTraversable="true">
         <items>
             <!-- Левая колонка: Список файлов -->
             <AnchorPane>
                 <children>
-                    <VBox spacing="5.0" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
+                    <VBox AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0" spacing="5.0">
                         <children>
                             <Label text="Файлы проекта:" textFill="#7f8c8d">
                                 <font>
-                                    <Font name="System Bold" size="12.0" />
+                                    <Font name="System Bold" size="12.0"/>
                                 </font>
                             </Label>
-                            <ListView fx:id="filesListView" VBox.vgrow="ALWAYS" />
+                            <ListView VBox.vgrow="ALWAYS" fx:id="filesListView"/>
                         </children>
                     </VBox>
                 </children>
@@ -52,45 +62,46 @@
             <!-- Правая колонка -->
             <AnchorPane>
                 <children>
-                    <SplitPane dividerPositions="0.4" orientation="VERTICAL" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
+                    <SplitPane AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0" dividerPositions="0.35" orientation="VERTICAL">
                         <items>
                             <!-- Верхняя часть: Таблица уязвимостей -->
                             <VBox spacing="5.0">
                                 <children>
                                     <Label text="Найденные уязвимости:" textFill="#cc0000">
                                         <font>
-                                            <Font name="System Bold" size="12.0" />
+                                            <Font name="System Bold" size="12.0"/>
                                         </font>
                                     </Label>
-                                    <TableView fx:id="vulnerabilitiesTable" VBox.vgrow="ALWAYS">
+                                    <TableView VBox.vgrow="ALWAYS" fx:id="vulnerabilitiesTable">
                                         <columns>
-                                            <TableColumn fx:id="titleColumn" prefWidth="200.0" text="Уязвимость" />
-                                            <TableColumn fx:id="severityColumn" prefWidth="100.0" text="Критичность" />
-                                            <TableColumn fx:id="linesColumn" prefWidth="80.0" text="Строки" />
+                                            <TableColumn fx:id="titleColumn" prefWidth="220.0" text="Уязвимость"/>
+                                            <TableColumn fx:id="severityColumn" prefWidth="100.0" text="Критичность"/>
+                                            <TableColumn fx:id="linesColumn" prefWidth="80.0" text="Строки"/>
                                         </columns>
                                     </TableView>
                                 </children>
                             </VBox>
 
-                            <!-- Нижняя часть: Детали + ИИ Чат -->
+                            <!-- Нижняя часть: WebView Чат -->
                             <VBox spacing="8.0">
                                 <padding>
-                                    <Insets top="5.0" />
+                                    <Insets top="5.0"/>
                                 </padding>
                                 <children>
-                                    <Label text="Детали уязвимости и диалог с ИИ-Консультантом:" textFill="#2c3e50">
+                                    <Label text="Интерактивный диалог с ИИ-Консультантом:" textFill="#2c3e50">
                                         <font>
-                                            <Font name="System Bold" size="12.0" />
+                                            <Font name="System Bold" size="12.0"/>
                                         </font>
                                     </Label>
-                                    <!-- Окно истории чата -->
-                                    <TextArea fx:id="detailsTextArea" editable="false" wrapText="true" VBox.vgrow="ALWAYS" />
+
+                                    <!-- Окно браузера для Markdown HTML чата -->
+                                    <WebView VBox.vgrow="ALWAYS" fx:id="chatWebView"/>
 
                                     <!-- Панель ввода вопроса -->
                                     <HBox spacing="8.0">
                                         <children>
-                                            <TextField fx:id="promptInputField" promptText="Задайте вопрос по этой уязвимости (напр., 'Напиши пример исправленного кода')..." HBox.hgrow="ALWAYS" />
-                                            <Button fx:id="sendPromptButton" mnemonicParsing="false" style="-fx-background-color: #2ecc71; -fx-text-fill: white; -fx-font-weight: bold;" text="Отправить" />
+                                            <TextField HBox.hgrow="ALWAYS" fx:id="promptInputField" promptText="Задайте вопрос (напр., 'Напиши пример исправленного кода')..." style="-fx-background-radius: 15;"/>
+                                            <Button fx:id="sendPromptButton" mnemonicParsing="false" style="-fx-background-color: #2b5278; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 15;" text="Отправить"/>
                                         </children>
                                     </HBox>
                                 </children>
