@@ -34,7 +34,7 @@ import java.util.List;
 @Component
 public class MainController {
 
-    // Основные элементы управления
+    // Основные элементы управления (Вкладка "Анализ")
     @FXML private Button selectFolderButton;
     @FXML private CheckBox selectAllCheckBox;
     @FXML private Button clearButton;
@@ -56,7 +56,7 @@ public class MainController {
     @FXML private TextField promptInputField;
     @FXML private Button sendPromptButton;
 
-    // Вспомогательные элементы (если добавлены в FXML)
+    // Вспомогательные элементы (Вкладка "Свободный чат")
     @FXML private ComboBox<String> chatModelComboBox;
     @FXML private Button refreshModelsButton;
     @FXML private WebView generalChatWebView;
@@ -76,7 +76,12 @@ public class MainController {
     private final Parser markdownParser = Parser.builder().build();
     private final HtmlRenderer htmlRenderer = HtmlRenderer.builder().build();
 
+    // HTML-буферы для рендеринга WebViews
     private final StringBuilder chatHistoryHtml = new StringBuilder();
+    private final StringBuilder generalChatHtml = new StringBuilder();
+
+    // Единая история сообщений общего чата для сохранения контекста при смене моделей
+    private final List<ChatMessage> generalChatHistory = new ArrayList<>();
 
     public MainController(ProjectScanner projectScanner,
                           FileAnalyzer fileAnalyzer,
@@ -92,12 +97,30 @@ public class MainController {
         this.fileFixService = fileFixService;
     }
 
+    /**
+     * DTO для сохранения роли и текста сообщения в истории контекста
+     */
+    public static class ChatMessage {
+        private final String role; // "user" или "assistant"
+        private final String content;
+
+        public ChatMessage(String role, String content) {
+            this.role = role;
+            this.content = content;
+        }
+
+        public String getRole() { return role; }
+        public String getContent() { return content; }
+    }
+
     @FXML
     public void initialize() {
+        // 1. Настройка таблицы уязвимостей
         titleColumn.setCellValueFactory(new PropertyValueFactory<>("title"));
         severityColumn.setCellValueFactory(new PropertyValueFactory<>("severity"));
         linesColumn.setCellValueFactory(new PropertyValueFactory<>("lineRange"));
 
+        // 2. Оформление дерева файлов с чекбоксами и статусами
         fileTreeView.setCellFactory(tv -> new CheckBoxTreeCell<File>(
                 item -> item instanceof CheckBoxTreeItem<File> cb ? cb.selectedProperty() : null,
                 new StringConverter<TreeItem<File>>() {
@@ -145,6 +168,7 @@ public class MainController {
             }
         });
 
+        // 3. Слушатели выбора файлов и уязвимостей
         fileTreeView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null && newVal.getValue() != null && newVal.getValue().isFile()) {
                 File selectedFile = newVal.getValue();
@@ -161,6 +185,7 @@ public class MainController {
             }
         });
 
+        // 4. Назначение обработчиков событий для первой вкладки
         selectAllCheckBox.setOnAction(event -> handleSelectAllToggle());
         selectFolderButton.setOnAction(event -> handleSelectFolderClick());
         clearButton.setOnAction(event -> handleClearProjectClick());
@@ -172,7 +197,7 @@ public class MainController {
         fixCurrentFileButton.setOnAction(event -> handleFixCurrentFileClick());
         fixAllButton.setOnAction(event -> handleFixAllClick());
 
-        // Безопасная инициализация свободных элементов чата (если они присутствуют в FXML)
+        // 5. Назначение обработчиков событий для общего чата (своевременная проверка на null)
         if (sendGeneralChatPromptButton != null) {
             sendGeneralChatPromptButton.setOnAction(event -> handleSendGeneralChatPrompt());
         }
@@ -183,6 +208,7 @@ public class MainController {
             refreshModelsButton.setOnAction(event -> loadAvailableModels());
         }
 
+        // Hotkey Ctrl+V
         Platform.runLater(() -> {
             if (pasteCodeButton.getScene() != null) {
                 pasteCodeButton.getScene().getAccelerators().put(
@@ -192,12 +218,14 @@ public class MainController {
             }
         });
 
+        // Сброс и запуск
         resetChatHtml();
+        resetGeneralChatHtml();
         loadAvailableModels();
     }
 
     /**
-     * Загрузка списка доступных моделей Ollama в ComboBox
+     * Загрузка списка доступных моделей Ollama в ComboBox компоненты
      */
     private void loadAvailableModels() {
         Task<List<String>> task = new Task<>() {
@@ -209,15 +237,14 @@ public class MainController {
 
         task.setOnSucceeded(e -> {
             List<String> models = task.getValue();
-            if (modelComboBox != null) {
-                modelComboBox.setItems(FXCollections.observableArrayList(models));
-                if (!models.isEmpty()) {
+            if (models != null && !models.isEmpty()) {
+                ObservableList<String> modelList = FXCollections.observableArrayList(models);
+                if (modelComboBox != null) {
+                    modelComboBox.setItems(modelList);
                     modelComboBox.getSelectionModel().selectFirst();
                 }
-            }
-            if (chatModelComboBox != null) {
-                chatModelComboBox.setItems(FXCollections.observableArrayList(models));
-                if (!models.isEmpty()) {
+                if (chatModelComboBox != null) {
+                    chatModelComboBox.setItems(modelList);
                     chatModelComboBox.getSelectionModel().selectFirst();
                 }
             }
@@ -228,6 +255,9 @@ public class MainController {
         thread.start();
     }
 
+    /**
+     * Отправка запроса в свободной вкладке чата с единым сохранением контекста
+     */
     private void handleSendGeneralChatPrompt() {
         if (generalChatPromptInput == null) return;
 
@@ -242,20 +272,30 @@ public class MainController {
             return;
         }
 
+        // Добавляем сообщение пользователя в UI и историю диалога
         appendGeneralChatMessage("Вы", prompt);
+        generalChatHistory.add(new ChatMessage("user", prompt));
+
         generalChatPromptInput.clear();
         if (sendGeneralChatPromptButton != null) sendGeneralChatPromptButton.setDisable(true);
+
+        // Формируем цепочку диалога для отправки в Ollama
+        String fullPromptWithContext = buildPromptWithHistory();
 
         Task<String> chatTask = new Task<>() {
             @Override
             protected String call() {
-                return ollamaClient.chatWithModel(selectedModel, prompt);
+                return ollamaClient.chatWithModel(selectedModel, fullPromptWithContext);
             }
         };
 
         chatTask.setOnSucceeded(e -> {
             if (sendGeneralChatPromptButton != null) sendGeneralChatPromptButton.setDisable(false);
-            appendGeneralChatMessage("ИИ (" + selectedModel + ")", chatTask.getValue());
+            String response = chatTask.getValue();
+
+            // Сохраняем ответ ассистента в контексте
+            generalChatHistory.add(new ChatMessage("assistant", response));
+            appendGeneralChatMessage("ИИ (" + selectedModel + ")", response);
         });
 
         chatTask.setOnFailed(e -> {
@@ -266,6 +306,22 @@ public class MainController {
         Thread thread = new Thread(chatTask);
         thread.setDaemon(true);
         thread.start();
+    }
+
+    /**
+     * Сборка накопленного контекста переписки в единый промпт
+     */
+    private String buildPromptWithHistory() {
+        StringBuilder sb = new StringBuilder();
+        for (ChatMessage msg : generalChatHistory) {
+            if ("user".equalsIgnoreCase(msg.getRole())) {
+                sb.append("User: ").append(msg.getContent()).append("\n\n");
+            } else {
+                sb.append("Assistant: ").append(msg.getContent()).append("\n\n");
+            }
+        }
+        sb.append("Assistant: ");
+        return sb.toString();
     }
 
     private void handleSelectAllToggle() {
@@ -307,6 +363,8 @@ public class MainController {
         vulnerabilitiesTable.getItems().clear();
         scanButton.setDisable(true);
         resetChatHtml();
+        resetGeneralChatHtml();
+        generalChatHistory.clear();
         appendMessageToChatHtml("Система", "🧹 Проект и результаты анализа очищены.");
     }
 
@@ -683,6 +741,12 @@ public class MainController {
         renderHtml(chatWebView, chatHistoryHtml);
     }
 
+    private void resetGeneralChatHtml() {
+        generalChatHtml.setLength(0);
+        generalChatHtml.append("<!DOCTYPE html><html><head>").append(getBaseCss()).append("</head><body>");
+        renderHtml(generalChatWebView, generalChatHtml);
+    }
+
     private void appendMessageToChatHtml(String sender, String markdownText) {
         String htmlContent = htmlRenderer.render(markdownParser.parse(markdownText));
         chatHistoryHtml.append("<div class='msg-card'>")
@@ -695,13 +759,11 @@ public class MainController {
     private void appendGeneralChatMessage(String sender, String markdownText) {
         if (generalChatWebView == null) return;
         String htmlContent = htmlRenderer.render(markdownParser.parse(markdownText));
-        StringBuilder sb = new StringBuilder();
-        sb.append("<!DOCTYPE html><html><head>").append(getBaseCss()).append("</head><body>")
-                .append("<div class='msg-card'>")
+        generalChatHtml.append("<div class='msg-card'>")
                 .append("<div class='sender'>").append(sender).append("</div>")
                 .append(htmlContent)
-                .append("</div></body></html>");
-        renderHtml(generalChatWebView, sb);
+                .append("</div>");
+        renderHtml(generalChatWebView, generalChatHtml);
     }
 
     private void renderHtml(WebView webView, StringBuilder htmlBuffer) {
