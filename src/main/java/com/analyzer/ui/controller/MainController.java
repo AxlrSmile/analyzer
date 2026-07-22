@@ -34,6 +34,7 @@ import java.util.List;
 @Component
 public class MainController {
 
+    // Основные элементы управления
     @FXML private Button selectFolderButton;
     @FXML private CheckBox selectAllCheckBox;
     @FXML private Button clearButton;
@@ -42,6 +43,8 @@ public class MainController {
     @FXML private Button pasteCodeButton;
     @FXML private Button fixAllButton;
     @FXML private Button fixCurrentFileButton;
+
+    @FXML private ComboBox<String> modelComboBox;
 
     @FXML private TreeView<File> fileTreeView;
     @FXML private TableView<Vulnerability> vulnerabilitiesTable;
@@ -52,6 +55,13 @@ public class MainController {
     @FXML private WebView chatWebView;
     @FXML private TextField promptInputField;
     @FXML private Button sendPromptButton;
+
+    // Вспомогательные элементы (если добавлены в FXML)
+    @FXML private ComboBox<String> chatModelComboBox;
+    @FXML private Button refreshModelsButton;
+    @FXML private WebView generalChatWebView;
+    @FXML private TextField generalChatPromptInput;
+    @FXML private Button sendGeneralChatPromptButton;
 
     private final ProjectScanner projectScanner;
     private final FileAnalyzer fileAnalyzer;
@@ -65,6 +75,7 @@ public class MainController {
 
     private final Parser markdownParser = Parser.builder().build();
     private final HtmlRenderer htmlRenderer = HtmlRenderer.builder().build();
+
     private final StringBuilder chatHistoryHtml = new StringBuilder();
 
     public MainController(ProjectScanner projectScanner,
@@ -87,7 +98,6 @@ public class MainController {
         severityColumn.setCellValueFactory(new PropertyValueFactory<>("severity"));
         linesColumn.setCellValueFactory(new PropertyValueFactory<>("lineRange"));
 
-        // Кастомные ячейки дерева с чекбоксами и динамической подсветкой найденных уязвимостей
         fileTreeView.setCellFactory(tv -> new CheckBoxTreeCell<File>(
                 item -> item instanceof CheckBoxTreeItem<File> cb ? cb.selectedProperty() : null,
                 new StringConverter<TreeItem<File>>() {
@@ -113,7 +123,6 @@ public class MainController {
                     return;
                 }
 
-                // Проверяем, просканирован ли данный файл
                 SourceFile matchedFile = scannedFiles.stream()
                         .filter(sf -> sf.getAbsolutePath() != null && sf.getAbsolutePath().equals(item.getAbsolutePath()))
                         .findFirst()
@@ -123,23 +132,19 @@ public class MainController {
                     int vulnCount = matchedFile.getVulnerabilities() != null ? matchedFile.getVulnerabilities().size() : 0;
 
                     if (vulnCount > 0) {
-                        // Файл содержит уязвимости: красный цвет + количество
                         setText(item.getName() + " ⚠️ (" + vulnCount + ")");
                         setStyle("-fx-text-fill: #c0392b; -fx-font-weight: bold;");
                     } else {
-                        // Чистый файл: зеленый цвет
                         setText(item.getName() + " ✅");
                         setStyle("-fx-text-fill: #27ae60; -fx-font-weight: normal;");
                     }
                 } else {
-                    // Папки или еще не просканированные файлы
                     setText(item.getName());
                     setStyle("-fx-text-fill: #2c3e50;");
                 }
             }
         });
 
-        // Отслеживание выбора файла в дереве для вывода уязвимостей в таблицу
         fileTreeView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null && newVal.getValue() != null && newVal.getValue().isFile()) {
                 File selectedFile = newVal.getValue();
@@ -156,10 +161,7 @@ public class MainController {
             }
         });
 
-        // Обработчик общего чекбокса "Выделить все"
         selectAllCheckBox.setOnAction(event -> handleSelectAllToggle());
-
-        // Привязка событий к кнопкам
         selectFolderButton.setOnAction(event -> handleSelectFolderClick());
         clearButton.setOnAction(event -> handleClearProjectClick());
         scanButton.setOnAction(event -> handleStartScanClick());
@@ -170,7 +172,17 @@ public class MainController {
         fixCurrentFileButton.setOnAction(event -> handleFixCurrentFileClick());
         fixAllButton.setOnAction(event -> handleFixAllClick());
 
-        // Горячая клавиша Ctrl+V для вставки кода из буфера обмена
+        // Безопасная инициализация свободных элементов чата (если они присутствуют в FXML)
+        if (sendGeneralChatPromptButton != null) {
+            sendGeneralChatPromptButton.setOnAction(event -> handleSendGeneralChatPrompt());
+        }
+        if (generalChatPromptInput != null) {
+            generalChatPromptInput.setOnAction(event -> handleSendGeneralChatPrompt());
+        }
+        if (refreshModelsButton != null) {
+            refreshModelsButton.setOnAction(event -> loadAvailableModels());
+        }
+
         Platform.runLater(() -> {
             if (pasteCodeButton.getScene() != null) {
                 pasteCodeButton.getScene().getAccelerators().put(
@@ -181,22 +193,88 @@ public class MainController {
         });
 
         resetChatHtml();
+        loadAvailableModels();
     }
 
     /**
-     * Обработчик состояния общего чекбокса "Выделить всё / Снять выделение"
+     * Загрузка списка доступных моделей Ollama в ComboBox
      */
+    private void loadAvailableModels() {
+        Task<List<String>> task = new Task<>() {
+            @Override
+            protected List<String> call() {
+                return ollamaClient.getAvailableModels();
+            }
+        };
+
+        task.setOnSucceeded(e -> {
+            List<String> models = task.getValue();
+            if (modelComboBox != null) {
+                modelComboBox.setItems(FXCollections.observableArrayList(models));
+                if (!models.isEmpty()) {
+                    modelComboBox.getSelectionModel().selectFirst();
+                }
+            }
+            if (chatModelComboBox != null) {
+                chatModelComboBox.setItems(FXCollections.observableArrayList(models));
+                if (!models.isEmpty()) {
+                    chatModelComboBox.getSelectionModel().selectFirst();
+                }
+            }
+        });
+
+        Thread thread = new Thread(task);
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private void handleSendGeneralChatPrompt() {
+        if (generalChatPromptInput == null) return;
+
+        String prompt = generalChatPromptInput.getText().trim();
+        String selectedModel = (chatModelComboBox != null) ? chatModelComboBox.getValue() : null;
+
+        if (prompt.isEmpty()) return;
+
+        if (selectedModel == null || selectedModel.isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.WARNING, "Пожалуйста, выберите модель для общения!");
+            alert.showAndWait();
+            return;
+        }
+
+        appendGeneralChatMessage("Вы", prompt);
+        generalChatPromptInput.clear();
+        if (sendGeneralChatPromptButton != null) sendGeneralChatPromptButton.setDisable(true);
+
+        Task<String> chatTask = new Task<>() {
+            @Override
+            protected String call() {
+                return ollamaClient.chatWithModel(selectedModel, prompt);
+            }
+        };
+
+        chatTask.setOnSucceeded(e -> {
+            if (sendGeneralChatPromptButton != null) sendGeneralChatPromptButton.setDisable(false);
+            appendGeneralChatMessage("ИИ (" + selectedModel + ")", chatTask.getValue());
+        });
+
+        chatTask.setOnFailed(e -> {
+            if (sendGeneralChatPromptButton != null) sendGeneralChatPromptButton.setDisable(false);
+            appendGeneralChatMessage("Система", "❌ **Ошибка взаимодействия с моделью.**");
+        });
+
+        Thread thread = new Thread(chatTask);
+        thread.setDaemon(true);
+        thread.start();
+    }
+
     private void handleSelectAllToggle() {
         TreeItem<File> root = fileTreeView.getRoot();
         if (root instanceof CheckBoxTreeItem<File> rootItem) {
-            boolean isSelected = selectAllCheckBox.isSelected();
-            setSubtreeSelection(rootItem, isSelected);
+            setSubtreeSelection(rootItem, selectAllCheckBox.isSelected());
         }
     }
 
-    /**
-     * Рекурсивное применение галочки ко всем дочерним узлам дерева
-     */
     private void setSubtreeSelection(CheckBoxTreeItem<File> item, boolean select) {
         if (item == null) return;
         item.setSelected(select);
@@ -207,9 +285,6 @@ public class MainController {
         }
     }
 
-    /**
-     * Выбор папки проекта и построение дерева с чекбоксами
-     */
     private void handleSelectFolderClick() {
         DirectoryChooser directoryChooser = new DirectoryChooser();
         directoryChooser.setTitle("Выберите папку с исходным кодом");
@@ -218,16 +293,13 @@ public class MainController {
 
         if (folder != null && folder.exists()) {
             this.selectedProjectFolder = folder;
-            selectAllCheckBox.setSelected(true); // Устанавливаем галочку при выборе новой папки
+            selectAllCheckBox.setSelected(true);
             buildFileTree(folder);
             scanButton.setDisable(false);
-            appendMessageToChatHtml("Система", "📁 Загружен проект: `" + folder.getName() + "`. Выберите файлы/папки в дереве и нажмите **«Запустить анализ выбранных»**.");
+            appendMessageToChatHtml("Система", "📁 Загружен проект: `" + folder.getName() + "`.");
         }
     }
 
-    /**
-     * Полная очистка состояния проекта и выбор нового
-     */
     private void handleClearProjectClick() {
         selectedProjectFolder = null;
         scannedFiles.clear();
@@ -235,7 +307,7 @@ public class MainController {
         vulnerabilitiesTable.getItems().clear();
         scanButton.setDisable(true);
         resetChatHtml();
-        appendMessageToChatHtml("Система", "🧹 Проект и результаты анализа успешно очищены. Выберите новую папку для анализа.");
+        appendMessageToChatHtml("Система", "🧹 Проект и результаты анализа очищены.");
     }
 
     private void buildFileTree(File rootFolder) {
@@ -247,7 +319,7 @@ public class MainController {
 
     private CheckBoxTreeItem<File> createTreeItem(File file) {
         CheckBoxTreeItem<File> item = new CheckBoxTreeItem<>(file);
-        item.setSelected(selectAllCheckBox.isSelected()); // Наследуем текущее состояние общего чекбокса
+        item.setSelected(selectAllCheckBox.isSelected());
 
         if (file.isDirectory()) {
             File[] files = file.listFiles();
@@ -262,9 +334,6 @@ public class MainController {
         return item;
     }
 
-    /**
-     * Анализ только отмеченных чекбоксами файлов
-     */
     private void handleStartScanClick() {
         if (fileTreeView.getRoot() == null) return;
 
@@ -272,7 +341,7 @@ public class MainController {
         collectSelectedFiles((CheckBoxTreeItem<File>) fileTreeView.getRoot(), selectedFiles);
 
         if (selectedFiles.isEmpty()) {
-            Alert alert = new Alert(Alert.AlertType.WARNING, "Вы не выбрали ни одного файла для анализа!");
+            Alert alert = new Alert(Alert.AlertType.WARNING, "Вы не выбрали ни одного файла!");
             alert.showAndWait();
             return;
         }
@@ -314,18 +383,15 @@ public class MainController {
             scanButton.setDisable(false);
             selectFolderButton.setDisable(false);
             scanButton.setText("🚀 Запустить анализ выбранных");
-
-            // Обновляем отображение дерева, чтобы применились статусы ⚠️ и ✅
             fileTreeView.refresh();
-
-            appendMessageToChatHtml("Система", "✅ **Анализ выбранных файлов завершен!** Просканировано файлов: " + scannedFiles.size());
+            appendMessageToChatHtml("Система", "✅ **Анализ завершен!** Просканировано файлов: " + scannedFiles.size());
         });
 
         scanTask.setOnFailed(e -> {
             scanButton.setDisable(false);
             selectFolderButton.setDisable(false);
             scanButton.setText("🚀 Запустить анализ выбранных");
-            appendMessageToChatHtml("Система", "❌ **Ошибка во время анализа файлов.**");
+            appendMessageToChatHtml("Система", "❌ **Ошибка во время анализа.**");
         });
 
         Thread thread = new Thread(scanTask);
@@ -378,7 +444,7 @@ public class MainController {
         if (saveFile != null) {
             try {
                 pdfReportService.generatePdfReport(scannedFiles, saveFile.getAbsolutePath());
-                Alert alert = new Alert(Alert.AlertType.INFORMATION, "PDF-отчет успешно сформирован и сохранен!");
+                Alert alert = new Alert(Alert.AlertType.INFORMATION, "PDF-отчет успешно сохранен!");
                 alert.showAndWait();
             } catch (Exception e) {
                 Alert alert = new Alert(Alert.AlertType.ERROR, "Не удалось создать PDF-отчет: " + e.getMessage());
@@ -597,36 +663,50 @@ public class MainController {
         thread.start();
     }
 
+    private String getBaseCss() {
+        return "<style>"
+                + "body { font-family: 'Segoe UI', Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 10px; padding: 0; }"
+                + ".msg-card { background: #ffffff; border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }"
+                + ".sender { font-weight: bold; font-size: 12px; color: #34495e; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }"
+                + "p { margin: 4px 0; color: #2c3e50; font-size: 13px; line-height: 1.5; }"
+                + "code { background: #eef2f7; color: #c0392b; padding: 2px 5px; border-radius: 4px; font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; }"
+                + "pre { background: #1e1e1e; color: #d4d4d4; padding: 10px; border-radius: 6px; overflow-x: auto; font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; }"
+                + "pre code { background: none; color: #d4d4d4; padding: 0; }"
+                + "h3 { color: #c0392b; margin-top: 0; font-size: 15px; }"
+                + "h4 { color: #2c3e50; margin: 8px 0 4px 0; font-size: 13px; }"
+                + "</style>";
+    }
+
     private void resetChatHtml() {
         chatHistoryHtml.setLength(0);
-        chatHistoryHtml.append("<!DOCTYPE html><html><head><style>")
-                .append("body { font-family: 'Segoe UI', Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 10px; padding: 0; }")
-                .append(".msg-card { background: #ffffff; border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }")
-                .append(".sender { font-weight: bold; font-size: 12px; color: #34495e; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }")
-                .append("p { margin: 4px 0; color: #2c3e50; font-size: 13px; line-height: 1.5; }")
-                .append("code { background: #eef2f7; color: #c0392b; padding: 2px 5px; border-radius: 4px; font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; }")
-                .append("pre { background: #1e1e1e; color: #d4d4d4; padding: 10px; border-radius: 6px; overflow-x: auto; font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; }")
-                .append("pre code { background: none; color: #d4d4d4; padding: 0; }")
-                .append("h3 { color: #c0392b; margin-top: 0; font-size: 15px; }")
-                .append("h4 { color: #2c3e50; margin: 8px 0 4px 0; font-size: 13px; }")
-                .append("</style></head><body>");
-
-        renderHtml();
+        chatHistoryHtml.append("<!DOCTYPE html><html><head>").append(getBaseCss()).append("</head><body>");
+        renderHtml(chatWebView, chatHistoryHtml);
     }
 
     private void appendMessageToChatHtml(String sender, String markdownText) {
         String htmlContent = htmlRenderer.render(markdownParser.parse(markdownText));
-
         chatHistoryHtml.append("<div class='msg-card'>")
                 .append("<div class='sender'>").append(sender).append("</div>")
                 .append(htmlContent)
                 .append("</div>");
-
-        renderHtml();
+        renderHtml(chatWebView, chatHistoryHtml);
     }
 
-    private void renderHtml() {
-        String fullHtml = chatHistoryHtml.toString() + "<script>window.scrollTo(0, document.body.scrollHeight);</script></body></html>";
-        Platform.runLater(() -> chatWebView.getEngine().loadContent(fullHtml));
+    private void appendGeneralChatMessage(String sender, String markdownText) {
+        if (generalChatWebView == null) return;
+        String htmlContent = htmlRenderer.render(markdownParser.parse(markdownText));
+        StringBuilder sb = new StringBuilder();
+        sb.append("<!DOCTYPE html><html><head>").append(getBaseCss()).append("</head><body>")
+                .append("<div class='msg-card'>")
+                .append("<div class='sender'>").append(sender).append("</div>")
+                .append(htmlContent)
+                .append("</div></body></html>");
+        renderHtml(generalChatWebView, sb);
+    }
+
+    private void renderHtml(WebView webView, StringBuilder htmlBuffer) {
+        if (webView == null) return;
+        String fullHtml = htmlBuffer.toString() + "<script>window.scrollTo(0, document.body.scrollHeight);</script></body></html>";
+        Platform.runLater(() -> webView.getEngine().loadContent(fullHtml));
     }
 }

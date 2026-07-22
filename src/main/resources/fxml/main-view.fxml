@@ -3,147 +3,194 @@
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.CheckBox?>
+<?import javafx.scene.control.ComboBox?>
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.SplitPane?>
+<?import javafx.scene.control.Tab?>
+<?import javafx.scene.control.TabPane?>
 <?import javafx.scene.control.TableColumn?>
 <?import javafx.scene.control.TableView?>
 <?import javafx.scene.control.TextField?>
 <?import javafx.scene.control.TreeView?>
 <?import javafx.scene.layout.AnchorPane?>
 <?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
 <?import javafx.scene.layout.VBox?>
-<?import javafx.scene.web.WebView?>
 <?import javafx.scene.text.Font?>
+<?import javafx.scene.web.WebView?>
 
-<VBox fx:controller="com.analyzer.ui.controller.MainController" prefHeight="750.0" prefWidth="1100.0" spacing="10.0" style="-fx-background-color: #f4f6f9;" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1">
+<VBox prefHeight="750.0" prefWidth="1100.0" spacing="10.0" style="-fx-background-color: #f4f6f9;" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.analyzer.ui.controller.MainController">
     <padding>
-        <Insets bottom="15.0" left="15.0" right="15.0" top="15.0"/>
+        <Insets bottom="10.0" left="15.0" right="15.0" top="15.0" />
     </padding>
 
-    <Label text="Локальный ИИ-Анализатор Безопасности Исходного Кода" textFill="#2c3e50">
-        <font>
-            <Font name="System Bold" size="18.0"/>
-        </font>
-    </Label>
+    <!-- Главная панель вкладок -->
+    <TabPane tabClosingPolicy="UNAVAILABLE" VBox.vgrow="ALWAYS">
+        <tabs>
+            <!-- ВКЛАДКА 1: Анализ безопасности проекта -->
+            <Tab text="🛡️ Анализ кода">
+                <content>
+                    <VBox spacing="10.0">
+                        <padding>
+                            <Insets top="10.0" />
+                        </padding>
 
-    <!-- Панель основных действий -->
-    <HBox spacing="10.0">
-        <children>
-            <Button fx:id="selectFolderButton" mnemonicParsing="false" style="-fx-background-color: #34495e; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="📁 Выбрать папку">
-                <font>
-                    <Font size="14.0"/>
-                </font>
-            </Button>
-            <Button fx:id="clearButton" mnemonicParsing="false" style="-fx-background-color: #c0392b; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="❌ Очистить">
-                <font>
-                    <Font size="14.0"/>
-                </font>
-            </Button>
-            <Button fx:id="scanButton" disable="true" maxWidth="Infinity" mnemonicParsing="false" style="-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="🚀 Запустить анализ выбранных" HBox.hgrow="ALWAYS">
-                <font>
-                    <Font size="14.0"/>
-                </font>
-            </Button>
-            <Button fx:id="pasteCodeButton" mnemonicParsing="false" style="-fx-background-color: #9b59b6; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="📋 Из буфера (Ctrl+V)">
-                <font>
-                    <Font size="14.0"/>
-                </font>
-            </Button>
-            <Button fx:id="fixAllButton" mnemonicParsing="false" style="-fx-background-color: #e67e22; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="⚡ Исправить весь проект">
-                <font>
-                    <Font size="14.0"/>
-                </font>
-            </Button>
-            <Button fx:id="exportPdfButton" mnemonicParsing="false" style="-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="Сохранить PDF">
-                <font>
-                    <Font size="14.0"/>
-                </font>
-            </Button>
-        </children>
-    </HBox>
+                        <!-- Панель основных действий -->
+                        <HBox spacing="10.0">
+                            <children>
+                                <Button fx:id="selectFolderButton" mnemonicParsing="false" style="-fx-background-color: #34495e; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="📁 Выбрать папку">
+                                    <font>
+                                        <Font size="14.0" />
+                                    </font>
+                                </Button>
+                                <Button fx:id="clearButton" mnemonicParsing="false" style="-fx-background-color: #c0392b; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="❌ Очистить">
+                                    <font>
+                                        <Font size="14.0" />
+                                    </font>
+                                </Button>
+                                <Button fx:id="scanButton" disable="true" maxWidth="Infinity" mnemonicParsing="false" style="-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="🚀 Запустить анализ выбранных" HBox.hgrow="ALWAYS">
+                                    <font>
+                                        <Font size="14.0" />
+                                    </font>
+                                </Button>
+                                <Button fx:id="pasteCodeButton" mnemonicParsing="false" style="-fx-background-color: #9b59b6; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="📋 Из буфера (Ctrl+V)">
+                                    <font>
+                                        <Font size="14.0" />
+                                    </font>
+                                </Button>
+                                <Button fx:id="fixAllButton" mnemonicParsing="false" style="-fx-background-color: #e67e22; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="⚡ Исправить весь проект">
+                                    <font>
+                                        <Font size="14.0" />
+                                    </font>
+                                </Button>
+                                <Button fx:id="exportPdfButton" mnemonicParsing="false" style="-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6;" text="📄 Сохранить PDF">
+                                    <font>
+                                        <Font size="14.0" />
+                                    </font>
+                                </Button>
+                            </children>
+                        </HBox>
 
-    <SplitPane VBox.vgrow="ALWAYS" dividerPositions="0.28" focusTraversable="true">
-        <items>
-            <!-- Левая колонка: Дерево файлов с чекбоксами -->
-            <AnchorPane>
-                <children>
-                    <VBox AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0" spacing="5.0">
+                        <SplitPane dividerPositions="0.28" focusTraversable="true" VBox.vgrow="ALWAYS">
+                            <items>
+                                <!-- Дерево файлов -->
+                                <AnchorPane>
+                                    <children>
+                                        <VBox spacing="5.0" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
+                                            <children>
+                                                <HBox alignment="CENTER_LEFT" spacing="5.0">
+                                                    <children>
+                                                        <Label text="Структура проекта:" textFill="#7f8c8d" HBox.hgrow="ALWAYS">
+                                                            <font>
+                                                                <Font name="System Bold" size="12.0" />
+                                                            </font>
+                                                        </Label>
+                                                        <CheckBox fx:id="selectAllCheckBox" mnemonicParsing="false" selected="true" style="-fx-font-weight: bold; -fx-text-fill: #34495e;" text="Выделить всё">
+                                                            <font>
+                                                                <Font size="11.0" />
+                                                            </font>
+                                                        </CheckBox>
+                                                    </children>
+                                                </HBox>
+                                                <TreeView fx:id="fileTreeView" VBox.vgrow="ALWAYS" />
+                                            </children>
+                                        </VBox>
+                                    </children>
+                                </AnchorPane>
+
+                                <!-- Таблица уязвимостей и чат контекста -->
+                                <AnchorPane>
+                                    <children>
+                                        <SplitPane dividerPositions="0.35" orientation="VERTICAL" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
+                                            <items>
+                                                <VBox spacing="5.0">
+                                                    <children>
+                                                        <Label text="Найденные уязвимости:" textFill="#cc0000">
+                                                            <font>
+                                                                <Font name="System Bold" size="12.0" />
+                                                            </font>
+                                                        </Label>
+                                                        <TableView fx:id="vulnerabilitiesTable" VBox.vgrow="ALWAYS">
+                                                            <columns>
+                                                                <TableColumn fx:id="titleColumn" prefWidth="220.0" text="Уязвимость" />
+                                                                <TableColumn fx:id="severityColumn" prefWidth="100.0" text="Критичность" />
+                                                                <TableColumn fx:id="linesColumn" prefWidth="80.0" text="Строки" />
+                                                            </columns>
+                                                        </TableView>
+                                                    </children>
+                                                </VBox>
+
+                                                <VBox spacing="8.0">
+                                                    <padding>
+                                                        <Insets top="5.0" />
+                                                    </padding>
+                                                    <children>
+                                                        <HBox alignment="CENTER_LEFT" spacing="10.0">
+                                                            <children>
+                                                                <Label text="Диалог по выбранной уязвимости:" textFill="#2c3e50" HBox.hgrow="ALWAYS">
+                                                                    <font>
+                                                                        <Font name="System Bold" size="12.0" />
+                                                                    </font>
+                                                                </Label>
+                                                                <Button fx:id="fixCurrentFileButton" mnemonicParsing="false" style="-fx-background-color: #8e44ad; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 4;" text="🛠️ Авто-исправить этот файл" />
+                                                            </children>
+                                                        </HBox>
+
+                                                        <WebView fx:id="chatWebView" VBox.vgrow="ALWAYS" />
+
+                                                        <HBox spacing="8.0">
+                                                            <children>
+                                                                <TextField fx:id="promptInputField" promptText="Задайте вопрос по этой уязвимости..." style="-fx-background-radius: 15;" HBox.hgrow="ALWAYS" />
+                                                                <Button fx:id="sendPromptButton" mnemonicParsing="false" style="-fx-background-color: #2b5278; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 15;" text="Отправить" />
+                                                            </children>
+                                                        </HBox>
+                                                    </children>
+                                                </VBox>
+                                            </items>
+                                        </SplitPane>
+                                    </children>
+                                </AnchorPane>
+                            </items>
+                        </SplitPane>
+                    </VBox>
+                </content>
+            </Tab>
+
+            <!-- ВКЛАДКА 2: Свободный чат с возможностью выбора модели -->
+            <Tab text="💬 Чат с ИИ">
+                <content>
+                    <VBox spacing="10.0">
+                        <padding>
+                            <Insets bottom="5.0" left="5.0" right="5.0" top="10.0" />
+                        </padding>
                         <children>
-                            <HBox alignment="CENTER_LEFT" spacing="5.0">
+                            <!-- Панель выбора локальной модели -->
+                            <HBox alignment="CENTER_LEFT" spacing="10.0" style="-fx-background-color: #ffffff; -fx-padding: 8; -fx-background-radius: 6; -fx-border-color: #e0e0e0; -fx-border-radius: 6;">
                                 <children>
-                                    <Label text="Структура проекта:" textFill="#7f8c8d" HBox.hgrow="ALWAYS">
+                                    <Label text="Выбор ИИ-модели (Ollama):" textFill="#2c3e50">
                                         <font>
-                                            <Font name="System Bold" size="12.0"/>
+                                            <Font name="System Bold" size="13.0" />
                                         </font>
                                     </Label>
-                                    <CheckBox fx:id="selectAllCheckBox" mnemonicParsing="false" selected="true" text="Выделить всё" style="-fx-font-weight: bold; -fx-text-fill: #34495e;">
-                                        <font>
-                                            <Font size="11.0"/>
-                                        </font>
-                                    </CheckBox>
+                                    <ComboBox fx:id="chatModelComboBox" prefWidth="250.0" promptText="Выберите модель..." style="-fx-background-radius: 4;" />
+                                    <Button fx:id="refreshModelsButton" mnemonicParsing="false" style="-fx-background-color: #7f8c8d; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 4;" text="🔄 Обновить список" />
                                 </children>
                             </HBox>
-                            <TreeView fx:id="fileTreeView" VBox.vgrow="ALWAYS" />
+
+                            <!-- Окно общего чата -->
+                            <WebView fx:id="generalChatWebView" VBox.vgrow="ALWAYS" />
+
+                            <!-- Поле ввода для общего чата -->
+                            <HBox spacing="8.0">
+                                <children>
+                                    <TextField fx:id="generalChatPromptInput" promptText="Спросите у ИИ всё что угодно..." style="-fx-background-radius: 15;" HBox.hgrow="ALWAYS" />
+                                    <Button fx:id="sendGeneralChatPromptButton" mnemonicParsing="false" style="-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 15;" text="Отправить" />
+                                </children>
+                            </HBox>
                         </children>
                     </VBox>
-                </children>
-            </AnchorPane>
-
-            <!-- Правая колонка -->
-            <AnchorPane>
-                <children>
-                    <SplitPane AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0" dividerPositions="0.35" orientation="VERTICAL">
-                        <items>
-                            <!-- Верхняя часть: Таблица уязвимостей -->
-                            <VBox spacing="5.0">
-                                <children>
-                                    <Label text="Найденные уязвимости:" textFill="#cc0000">
-                                        <font>
-                                            <Font name="System Bold" size="12.0"/>
-                                        </font>
-                                    </Label>
-                                    <TableView VBox.vgrow="ALWAYS" fx:id="vulnerabilitiesTable">
-                                        <columns>
-                                            <TableColumn fx:id="titleColumn" prefWidth="220.0" text="Уязвимость"/>
-                                            <TableColumn fx:id="severityColumn" prefWidth="100.0" text="Критичность"/>
-                                            <TableColumn fx:id="linesColumn" prefWidth="80.0" text="Строки"/>
-                                        </columns>
-                                    </TableView>
-                                </children>
-                            </VBox>
-
-                            <!-- Нижняя часть: WebView Чат и Локальная Кнопка -->
-                            <VBox spacing="8.0">
-                                <padding>
-                                    <Insets top="5.0"/>
-                                </padding>
-                                <children>
-                                    <HBox alignment="CENTER_LEFT" spacing="10.0">
-                                        <children>
-                                            <Label text="Интерактивный диалог с ИИ-Консультантом:" textFill="#2c3e50" HBox.hgrow="ALWAYS">
-                                                <font>
-                                                    <Font name="System Bold" size="12.0"/>
-                                                </font>
-                                            </Label>
-                                            <Button fx:id="fixCurrentFileButton" mnemonicParsing="false" style="-fx-background-color: #8e44ad; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 4;" text="🛠️ Авто-исправить этот файл" />
-                                        </children>
-                                    </HBox>
-
-                                    <WebView VBox.vgrow="ALWAYS" fx:id="chatWebView"/>
-
-                                    <!-- Панель ввода вопроса -->
-                                    <HBox spacing="8.0">
-                                        <children>
-                                            <TextField HBox.hgrow="ALWAYS" fx:id="promptInputField" promptText="Задайте вопрос (напр., 'Напиши пример исправленного кода')..." style="-fx-background-radius: 15;"/>
-                                            <Button fx:id="sendPromptButton" mnemonicParsing="false" style="-fx-background-color: #2b5278; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 15;" text="Отправить"/>
-                                        </children>
-                                    </HBox>
-                                </children>
-                            </VBox>
-                        </items>
-                    </SplitPane>
-                </children>
-            </AnchorPane>
-        </items>
-    </SplitPane>
+                </content>
+            </Tab>
+        </tabs>
+    </TabPane>
 </VBox>

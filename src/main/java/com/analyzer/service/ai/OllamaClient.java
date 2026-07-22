@@ -24,14 +24,53 @@ public class OllamaClient {
     private final ObjectMapper objectMapper;
 
     // Конфигурация по умолчанию
-    private static final String OLLAMA_URL = "http://localhost:11434/api/generate";
-    private static final String MODEL_NAME = "qwen2.5-coder:7b"; // или deepseek-coder
+    private static final String OLLAMA_BASE_URL = "http://localhost:11434";
+    private static final String DEFAULT_MODEL_NAME = "qwen2.5-coder:7b";
 
     public OllamaClient(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
+    }
+
+    /**
+     * Получение списка всех локально скачанных моделей из Ollama
+     */
+    public List<String> getAvailableModels() {
+        List<String> models = new ArrayList<>();
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(OLLAMA_BASE_URL + "/api/tags"))
+                    .GET()
+                    .timeout(Duration.ofSeconds(5))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                JsonNode root = objectMapper.readTree(response.body());
+                JsonNode modelsNode = root.get("models");
+                if (modelsNode != null && modelsNode.isArray()) {
+                    for (JsonNode model : modelsNode) {
+                        if (model.has("name")) {
+                            models.add(model.get("name").asText());
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Ошибка при получении списка моделей Ollama: " + e.getMessage());
+        }
+        return models;
+    }
+
+    /**
+     * Отправка произвольного сообщения ИИ с указанием конкретной модели (для общего чата)
+     */
+    public String chatWithModel(String modelName, String userPrompt) {
+        String systemPrompt = "Вы — универсальный и высококвалифицированный ИИ-ассистент. Отвечайте на вопросы пользователя вежливо, четко и структурировано на русском языке.";
+        String effectiveModel = (modelName != null && !modelName.isBlank()) ? modelName : DEFAULT_MODEL_NAME;
+        return executeOllamaRequest(userPrompt, systemPrompt, effectiveModel);
     }
 
     public List<Vulnerability> analyzeCodeChunk(String codeChunk) {
@@ -62,7 +101,7 @@ public class OllamaClient {
             );
 
             Map<String, Object> requestBody = Map.of(
-                    "model", MODEL_NAME,
+                    "model", DEFAULT_MODEL_NAME,
                     "prompt", "Code to analyze:\n\n" + codeChunk,
                     "system", systemPrompt,
                     "stream", false,
@@ -73,7 +112,7 @@ public class OllamaClient {
             String jsonPayload = objectMapper.writeValueAsString(requestBody);
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(OLLAMA_URL))
+                    .uri(URI.create(OLLAMA_BASE_URL + "/api/generate"))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
                     .timeout(Duration.ofMinutes(5))
@@ -145,7 +184,7 @@ public class OllamaClient {
                 userQuestion
         );
 
-        return executeOllamaRequest(prompt, systemPrompt);
+        return executeOllamaRequest(prompt, systemPrompt, DEFAULT_MODEL_NAME);
     }
 
     /**
@@ -167,22 +206,22 @@ public class OllamaClient {
                 .append("Перепиши этот код так, чтобы полностью устранить все указанные уязвимости. ")
                 .append("ВАЖНО: В ответе верни ИСКЛЮЧИТЕЛЬНО готовый исправленный код Java внутри тегов ```java ... ``` без лишних приветствий и пояснений.");
 
-        String response = executeOllamaRequest(sb.toString(), systemPrompt);
+        String response = executeOllamaRequest(sb.toString(), systemPrompt, DEFAULT_MODEL_NAME);
 
         return extractCodeBlock(response);
     }
 
     /**
-     * Универсальный private-метод для отправки любого текстового промпта в Ollama.
+     * Универсальный private-метод для отправки любого текстового промпта в Ollama с поддержкой выбора модели.
      */
-    private String executeOllamaRequest(String prompt, String systemPrompt) {
+    private String executeOllamaRequest(String prompt, String systemPrompt, String modelName) {
         try {
             Map<String, Object> options = Map.of(
                     "temperature", 0.1
             );
 
             Map<String, Object> requestBody = Map.of(
-                    "model", MODEL_NAME,
+                    "model", modelName,
                     "prompt", prompt,
                     "system", systemPrompt,
                     "stream", false,
@@ -192,7 +231,7 @@ public class OllamaClient {
             String jsonPayload = objectMapper.writeValueAsString(requestBody);
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(OLLAMA_URL))
+                    .uri(URI.create(OLLAMA_BASE_URL + "/api/generate"))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
                     .timeout(Duration.ofMinutes(4))
