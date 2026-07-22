@@ -2,9 +2,12 @@ package com.analyzer.service.ai;
 
 import com.analyzer.domain.model.SourceFile;
 import com.analyzer.domain.model.Vulnerability;
+import com.analyzer.ui.controller.MainController;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -65,12 +68,68 @@ public class OllamaClient {
     }
 
     /**
-     * Отправка произвольного сообщения ИИ с указанием конкретной модели (для общего чата)
+     * Отправка произвольного сообщения ИИ с указанием конкретной модели (для одиночных промптов)
      */
     public String chatWithModel(String modelName, String userPrompt) {
         String systemPrompt = "Вы — универсальный и высококвалифицированный ИИ-ассистент. Отвечайте на вопросы пользователя вежливо, четко и структурировано на русском языке.";
         String effectiveModel = (modelName != null && !modelName.isBlank()) ? modelName : DEFAULT_MODEL_NAME;
         return executeOllamaRequest(userPrompt, systemPrompt, effectiveModel);
+    }
+
+    /**
+     * Отправка полной истории диалога через Ollama Chat API (/api/chat)
+     * Ожидает роли: "user" или "assistant"
+     */
+    public String chatWithHistory(String modelName, List<MainController.ChatMessage> history) {
+        String effectiveModel = (modelName != null && !modelName.isBlank()) ? modelName : DEFAULT_MODEL_NAME;
+
+        try {
+            ObjectNode requestJson = objectMapper.createObjectNode();
+            requestJson.put("model", effectiveModel);
+            requestJson.put("stream", false);
+
+            ArrayNode messagesArray = requestJson.putArray("messages");
+
+            // 1. Системный промпт как заголовок контекста
+            ObjectNode systemMsgNode = messagesArray.addObject();
+            systemMsgNode.put("role", "system");
+            systemMsgNode.put("content", "Вы — универсальный и высококвалифицированный ИИ-ассистент. Отвечайте на вопросы пользователя вежливо, четко и структурировано на русском языке.");
+
+            // 2. Формируем историю сообщений диалога
+            for (MainController.ChatMessage msg : history) {
+                ObjectNode msgNode = messagesArray.addObject();
+                msgNode.put("role", msg.getRole()); // "user" или "assistant"
+                msgNode.put("content", msg.getContent());
+            }
+
+            String jsonPayload = objectMapper.writeValueAsString(requestJson);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(OLLAMA_BASE_URL + "/api/chat"))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
+                    .timeout(Duration.ofMinutes(4))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() == 200) {
+                JsonNode responseJson = objectMapper.readTree(response.body());
+                if (responseJson.has("message") && responseJson.get("message").has("content")) {
+                    return responseJson.get("message").get("content").asText().trim();
+                }
+                return "⚠️ Ошибка: не удалось извлечь поле message.content из ответа Ollama.";
+            } else {
+                return " Ошибка обращения к Ollama Chat API: код ответа " + response.statusCode();
+            }
+
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            e.printStackTrace();
+            return "❌ Ошибка при вызове /api/chat: " + e.getMessage();
+        }
     }
 
     public List<Vulnerability> analyzeCodeChunk(String codeChunk) {
@@ -212,7 +271,7 @@ public class OllamaClient {
     }
 
     /**
-     * Универсальный private-метод для отправки любого текстового промпта в Ollama с поддержкой выбора модели.
+     * Универсальный private-метод для отправки любого текстового промпта в Ollama через /api/generate
      */
     private String executeOllamaRequest(String prompt, String systemPrompt, String modelName) {
         try {

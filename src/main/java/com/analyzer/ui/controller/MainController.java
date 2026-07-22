@@ -62,6 +62,7 @@ public class MainController {
     @FXML private WebView generalChatWebView;
     @FXML private TextField generalChatPromptInput;
     @FXML private Button sendGeneralChatPromptButton;
+    @FXML private Button clearGeneralChatButton; // Кнопка очистки свободного чата
 
     private final ProjectScanner projectScanner;
     private final FileAnalyzer fileAnalyzer;
@@ -207,6 +208,9 @@ public class MainController {
         if (refreshModelsButton != null) {
             refreshModelsButton.setOnAction(event -> loadAvailableModels());
         }
+        if (clearGeneralChatButton != null) {
+            clearGeneralChatButton.setOnAction(event -> handleClearGeneralChat());
+        }
 
         // Hotkey Ctrl+V
         Platform.runLater(() -> {
@@ -256,7 +260,22 @@ public class MainController {
     }
 
     /**
-     * Отправка запроса в свободной вкладке чата с единым сохранением контекста
+     * Сброс истории свободного чата и очистка контекста диалога
+     */
+    @FXML
+    private void handleClearGeneralChat() {
+        // 1. Очищаем накопленный контекст диалога
+        generalChatHistory.clear();
+
+        // 2. Сбрасываем HTML в WebView
+        resetGeneralChatHtml();
+
+        // 3. Выводим приветственное/системное сообщение
+        appendGeneralChatMessage("Система", "🧹 **Чат и контекст диалога успешно сброшены.**");
+    }
+
+    /**
+     * Отправка запроса в свободной вкладке чата с нативной поддержкой ролей в Ollama Chat API
      */
     private void handleSendGeneralChatPrompt() {
         if (generalChatPromptInput == null) return;
@@ -272,20 +291,21 @@ public class MainController {
             return;
         }
 
-        // Добавляем сообщение пользователя в UI и историю диалога
+        // 1. Отображаем сообщение пользователя в WebView
         appendGeneralChatMessage("Вы", prompt);
+
+        // 2. Добавляем реплику пользователя в историю контекста
         generalChatHistory.add(new ChatMessage("user", prompt));
 
         generalChatPromptInput.clear();
         if (sendGeneralChatPromptButton != null) sendGeneralChatPromptButton.setDisable(true);
 
-        // Формируем цепочку диалога для отправки в Ollama
-        String fullPromptWithContext = buildPromptWithHistory();
-
+        // 3. Асинхронный вызов Chat API с передачей всей коллекции history
         Task<String> chatTask = new Task<>() {
             @Override
             protected String call() {
-                return ollamaClient.chatWithModel(selectedModel, fullPromptWithContext);
+                // Отправляем всю историю через новый метод chatWithHistory
+                return ollamaClient.chatWithHistory(selectedModel, generalChatHistory);
             }
         };
 
@@ -293,8 +313,12 @@ public class MainController {
             if (sendGeneralChatPromptButton != null) sendGeneralChatPromptButton.setDisable(false);
             String response = chatTask.getValue();
 
-            // Сохраняем ответ ассистента в контексте
-            generalChatHistory.add(new ChatMessage("assistant", response));
+            // 4. Добавляем ответ ассистента в историю с явным указанием модели,
+            // чтобы при смене модели новый ИИ понимал, кто именно давал предыдущий ответ
+            String historyContent = "[Модель: " + selectedModel + "]\n" + response;
+            generalChatHistory.add(new ChatMessage("assistant", historyContent));
+
+            // 5. Выводим чистый ответ в UI (без служебного префикса)
             appendGeneralChatMessage("ИИ (" + selectedModel + ")", response);
         });
 
