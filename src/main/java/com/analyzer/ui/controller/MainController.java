@@ -35,6 +35,7 @@ import java.util.List;
 public class MainController {
 
     @FXML private Button selectFolderButton;
+    @FXML private CheckBox selectAllCheckBox;
     @FXML private Button clearButton;
     @FXML private Button scanButton;
     @FXML private Button exportPdfButton;
@@ -155,6 +156,9 @@ public class MainController {
             }
         });
 
+        // Обработчик общего чекбокса "Выделить все"
+        selectAllCheckBox.setOnAction(event -> handleSelectAllToggle());
+
         // Привязка событий к кнопкам
         selectFolderButton.setOnAction(event -> handleSelectFolderClick());
         clearButton.setOnAction(event -> handleClearProjectClick());
@@ -180,6 +184,30 @@ public class MainController {
     }
 
     /**
+     * Обработчик состояния общего чекбокса "Выделить всё / Снять выделение"
+     */
+    private void handleSelectAllToggle() {
+        TreeItem<File> root = fileTreeView.getRoot();
+        if (root instanceof CheckBoxTreeItem<File> rootItem) {
+            boolean isSelected = selectAllCheckBox.isSelected();
+            setSubtreeSelection(rootItem, isSelected);
+        }
+    }
+
+    /**
+     * Рекурсивное применение галочки ко всем дочерним узлам дерева
+     */
+    private void setSubtreeSelection(CheckBoxTreeItem<File> item, boolean select) {
+        if (item == null) return;
+        item.setSelected(select);
+        for (TreeItem<File> child : item.getChildren()) {
+            if (child instanceof CheckBoxTreeItem<File> childCheckBoxItem) {
+                setSubtreeSelection(childCheckBoxItem, select);
+            }
+        }
+    }
+
+    /**
      * Выбор папки проекта и построение дерева с чекбоксами
      */
     private void handleSelectFolderClick() {
@@ -190,6 +218,7 @@ public class MainController {
 
         if (folder != null && folder.exists()) {
             this.selectedProjectFolder = folder;
+            selectAllCheckBox.setSelected(true); // Устанавливаем галочку при выборе новой папки
             buildFileTree(folder);
             scanButton.setDisable(false);
             appendMessageToChatHtml("Система", "📁 Загружен проект: `" + folder.getName() + "`. Выберите файлы/папки в дереве и нажмите **«Запустить анализ выбранных»**.");
@@ -218,7 +247,7 @@ public class MainController {
 
     private CheckBoxTreeItem<File> createTreeItem(File file) {
         CheckBoxTreeItem<File> item = new CheckBoxTreeItem<>(file);
-        item.setSelected(true); // По умолчанию все элементы выбраны
+        item.setSelected(selectAllCheckBox.isSelected()); // Наследуем текущее состояние общего чекбокса
 
         if (file.isDirectory()) {
             File[] files = file.listFiles();
