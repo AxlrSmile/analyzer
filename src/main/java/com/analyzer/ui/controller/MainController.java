@@ -2,6 +2,7 @@ package com.analyzer.ui.controller;
 
 import com.analyzer.domain.model.SourceFile;
 import com.analyzer.domain.model.Vulnerability;
+import com.analyzer.service.agent.AgentService;
 import com.analyzer.service.ai.OllamaClient;
 import com.analyzer.service.fix.FileFixService;
 import com.analyzer.service.parser.CodeParser;
@@ -34,7 +35,9 @@ import java.util.List;
 @Component
 public class MainController {
 
-    // Основные элементы управления (Вкладка "Анализ")
+    // ==========================================
+    // Вкладка 1: Анализ безопасности проекта
+    // ==========================================
     @FXML private Button selectFolderButton;
     @FXML private CheckBox selectAllCheckBox;
     @FXML private Button clearButton;
@@ -56,21 +59,40 @@ public class MainController {
     @FXML private TextField promptInputField;
     @FXML private Button sendPromptButton;
 
-    // Вспомогательные элементы (Вкладка "Свободный чат")
+    // ==========================================
+    // Вкладка 2: Свободный чат с ИИ
+    // ==========================================
     @FXML private ComboBox<String> chatModelComboBox;
     @FXML private Button refreshModelsButton;
     @FXML private WebView generalChatWebView;
     @FXML private TextField generalChatPromptInput;
     @FXML private Button sendGeneralChatPromptButton;
-    @FXML private Button clearGeneralChatButton; // Кнопка очистки свободного чата
+    @FXML private Button clearGeneralChatButton;
 
+    // ==========================================
+    // Вкладка 3: ИИ-Агент Генерации Проекта
+    // ==========================================
+    @FXML private TextField agentWorkDirInput;
+    @FXML private Button agentSelectFolderButton;
+    @FXML private ComboBox<String> agentModelComboBox;
+    @FXML private TextArea agentTaskPromptInput;
+    @FXML private Button agentStartButton;
+    @FXML private WebView agentLogWebView;
+
+    // ==========================================
+    // Сервисы Spring
+    // ==========================================
     private final ProjectScanner projectScanner;
     private final FileAnalyzer fileAnalyzer;
     private final CodeParser codeParser;
     private final OllamaClient ollamaClient;
     private final PdfReportService pdfReportService;
     private final FileFixService fileFixService;
+    private final AgentService agentService;
 
+    // ==========================================
+    // Внутренние состояния и буферы
+    // ==========================================
     private final ObservableList<SourceFile> scannedFiles = FXCollections.observableArrayList();
     private File selectedProjectFolder = null;
 
@@ -80,8 +102,9 @@ public class MainController {
     // HTML-буферы для рендеринга WebViews
     private final StringBuilder chatHistoryHtml = new StringBuilder();
     private final StringBuilder generalChatHtml = new StringBuilder();
+    private final StringBuilder agentLogHtml = new StringBuilder();
 
-    // Единая история сообщений общего чата для сохранения контекста при смене моделей
+    // Единая история сообщений общего чата
     private final List<ChatMessage> generalChatHistory = new ArrayList<>();
 
     public MainController(ProjectScanner projectScanner,
@@ -89,13 +112,15 @@ public class MainController {
                           CodeParser codeParser,
                           OllamaClient ollamaClient,
                           PdfReportService pdfReportService,
-                          FileFixService fileFixService) {
+                          FileFixService fileFixService,
+                          AgentService agentService) {
         this.projectScanner = projectScanner;
         this.fileAnalyzer = fileAnalyzer;
         this.codeParser = codeParser;
         this.ollamaClient = ollamaClient;
         this.pdfReportService = pdfReportService;
         this.fileFixService = fileFixService;
+        this.agentService = agentService;
     }
 
     /**
@@ -117,88 +142,92 @@ public class MainController {
     @FXML
     public void initialize() {
         // 1. Настройка таблицы уязвимостей
-        titleColumn.setCellValueFactory(new PropertyValueFactory<>("title"));
-        severityColumn.setCellValueFactory(new PropertyValueFactory<>("severity"));
-        linesColumn.setCellValueFactory(new PropertyValueFactory<>("lineRange"));
+        if (titleColumn != null) titleColumn.setCellValueFactory(new PropertyValueFactory<>("title"));
+        if (severityColumn != null) severityColumn.setCellValueFactory(new PropertyValueFactory<>("severity"));
+        if (linesColumn != null) linesColumn.setCellValueFactory(new PropertyValueFactory<>("lineRange"));
 
         // 2. Оформление дерева файлов с чекбоксами и статусами
-        fileTreeView.setCellFactory(tv -> new CheckBoxTreeCell<File>(
-                item -> item instanceof CheckBoxTreeItem<File> cb ? cb.selectedProperty() : null,
-                new StringConverter<TreeItem<File>>() {
-                    @Override
-                    public String toString(TreeItem<File> treeItem) {
-                        return (treeItem != null && treeItem.getValue() != null) ? treeItem.getValue().getName() : "";
+        if (fileTreeView != null) {
+            fileTreeView.setCellFactory(tv -> new CheckBoxTreeCell<File>(
+                    item -> item instanceof CheckBoxTreeItem<File> cb ? cb.selectedProperty() : null,
+                    new StringConverter<TreeItem<File>>() {
+                        @Override
+                        public String toString(TreeItem<File> treeItem) {
+                            return (treeItem != null && treeItem.getValue() != null) ? treeItem.getValue().getName() : "";
+                        }
+
+                        @Override
+                        public TreeItem<File> fromString(String string) {
+                            return null;
+                        }
+                    }
+            ) {
+                @Override
+                public void updateItem(File item, boolean empty) {
+                    super.updateItem(item, empty);
+
+                    if (empty || item == null) {
+                        setText(null);
+                        setGraphic(null);
+                        setStyle("");
+                        return;
                     }
 
-                    @Override
-                    public TreeItem<File> fromString(String string) {
-                        return null;
-                    }
-                }
-        ) {
-            @Override
-            public void updateItem(File item, boolean empty) {
-                super.updateItem(item, empty);
+                    SourceFile matchedFile = scannedFiles.stream()
+                            .filter(sf -> sf.getAbsolutePath() != null && sf.getAbsolutePath().equals(item.getAbsolutePath()))
+                            .findFirst()
+                            .orElse(null);
 
-                if (empty || item == null) {
-                    setText(null);
-                    setGraphic(null);
-                    setStyle("");
-                    return;
-                }
+                    if (item.isFile() && matchedFile != null) {
+                        int vulnCount = matchedFile.getVulnerabilities() != null ? matchedFile.getVulnerabilities().size() : 0;
 
-                SourceFile matchedFile = scannedFiles.stream()
-                        .filter(sf -> sf.getAbsolutePath() != null && sf.getAbsolutePath().equals(item.getAbsolutePath()))
-                        .findFirst()
-                        .orElse(null);
-
-                if (item.isFile() && matchedFile != null) {
-                    int vulnCount = matchedFile.getVulnerabilities() != null ? matchedFile.getVulnerabilities().size() : 0;
-
-                    if (vulnCount > 0) {
-                        setText(item.getName() + " ⚠️ (" + vulnCount + ")");
-                        setStyle("-fx-text-fill: #c0392b; -fx-font-weight: bold;");
+                        if (vulnCount > 0) {
+                            setText(item.getName() + " ⚠️ (" + vulnCount + ")");
+                            setStyle("-fx-text-fill: #c0392b; -fx-font-weight: bold;");
+                        } else {
+                            setText(item.getName() + " ✅");
+                            setStyle("-fx-text-fill: #27ae60; -fx-font-weight: normal;");
+                        }
                     } else {
-                        setText(item.getName() + " ✅");
-                        setStyle("-fx-text-fill: #27ae60; -fx-font-weight: normal;");
+                        setText(item.getName());
+                        setStyle("-fx-text-fill: #2c3e50;");
                     }
-                } else {
-                    setText(item.getName());
-                    setStyle("-fx-text-fill: #2c3e50;");
                 }
-            }
-        });
+            });
 
-        // 3. Слушатели выбора файлов и уязвимостей
-        fileTreeView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
-            if (newVal != null && newVal.getValue() != null && newVal.getValue().isFile()) {
-                File selectedFile = newVal.getValue();
-                scannedFiles.stream()
-                        .filter(sf -> sf.getAbsolutePath() != null && sf.getAbsolutePath().equals(selectedFile.getAbsolutePath()))
-                        .findFirst()
-                        .ifPresent(this::showVulnerabilitiesForFile);
-            }
-        });
+            // 3. Слушатели выбора файлов и уязвимостей
+            fileTreeView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
+                if (newVal != null && newVal.getValue() != null && newVal.getValue().isFile()) {
+                    File selectedFile = newVal.getValue();
+                    scannedFiles.stream()
+                            .filter(sf -> sf.getAbsolutePath() != null && sf.getAbsolutePath().equals(selectedFile.getAbsolutePath()))
+                            .findFirst()
+                            .ifPresent(this::showVulnerabilitiesForFile);
+                }
+            });
+        }
 
-        vulnerabilitiesTable.getSelectionModel().selectedItemProperty().addListener((obs, oldSelection, newSelection) -> {
-            if (newSelection != null) {
-                showVulnerabilityDetails(newSelection);
-            }
-        });
+        if (vulnerabilitiesTable != null) {
+            vulnerabilitiesTable.getSelectionModel().selectedItemProperty().addListener((obs, oldSelection, newSelection) -> {
+                if (newSelection != null) {
+                    showVulnerabilityDetails(newSelection);
+                }
+            });
+        }
 
         // 4. Назначение обработчиков событий для первой вкладки
-        selectAllCheckBox.setOnAction(event -> handleSelectAllToggle());
-        selectFolderButton.setOnAction(event -> handleSelectFolderClick());
-        clearButton.setOnAction(event -> handleClearProjectClick());
-        scanButton.setOnAction(event -> handleStartScanClick());
-        pasteCodeButton.setOnAction(event -> handlePasteAndAnalyzeCode());
-        exportPdfButton.setOnAction(event -> handleExportPdfClick());
-        sendPromptButton.setOnAction(event -> handleSendPromptClick());
-        promptInputField.setOnAction(event -> handleSendPromptClick());
-        fixCurrentFileButton.setOnAction(event -> handleFixCurrentFileClick());
-        fixAllButton.setOnAction(event -> handleFixAllClick());
+        if (selectAllCheckBox != null) selectAllCheckBox.setOnAction(event -> handleSelectAllToggle());
+        if (selectFolderButton != null) selectFolderButton.setOnAction(event -> handleSelectFolderClick());
+        if (clearButton != null) clearButton.setOnAction(event -> handleClearProjectClick());
+        if (scanButton != null) scanButton.setOnAction(event -> handleStartScanClick());
+        if (pasteCodeButton != null) pasteCodeButton.setOnAction(event -> handlePasteAndAnalyzeCode());
+        if (exportPdfButton != null) exportPdfButton.setOnAction(event -> handleExportPdfClick());
+        if (sendPromptButton != null) sendPromptButton.setOnAction(event -> handleSendPromptClick());
+        if (promptInputField != null) promptInputField.setOnAction(event -> handleSendPromptClick());
+        if (fixCurrentFileButton != null) fixCurrentFileButton.setOnAction(event -> handleFixCurrentFileClick());
+        if (fixAllButton != null) fixAllButton.setOnAction(event -> handleFixAllClick());
 
-        // 5. Назначение обработчиков событий для общего чата (своевременная проверка на null)
+        // 5. Назначение обработчиков событий для свободного чата
         if (sendGeneralChatPromptButton != null) {
             sendGeneralChatPromptButton.setOnAction(event -> handleSendGeneralChatPrompt());
         }
@@ -214,7 +243,7 @@ public class MainController {
 
         // Hotkey Ctrl+V
         Platform.runLater(() -> {
-            if (pasteCodeButton.getScene() != null) {
+            if (pasteCodeButton != null && pasteCodeButton.getScene() != null) {
                 pasteCodeButton.getScene().getAccelerators().put(
                         new KeyCodeCombination(KeyCode.V, KeyCombination.CONTROL_DOWN),
                         this::handlePasteAndAnalyzeCode
@@ -222,9 +251,10 @@ public class MainController {
             }
         });
 
-        // Сброс и запуск
+        // Сброс окон WebView и загрузка моделей
         resetChatHtml();
         resetGeneralChatHtml();
+        resetAgentLogHtml();
         loadAvailableModels();
     }
 
@@ -251,6 +281,10 @@ public class MainController {
                     chatModelComboBox.setItems(modelList);
                     chatModelComboBox.getSelectionModel().selectFirst();
                 }
+                if (agentModelComboBox != null) {
+                    agentModelComboBox.setItems(modelList);
+                    agentModelComboBox.getSelectionModel().selectFirst();
+                }
             }
         });
 
@@ -259,24 +293,90 @@ public class MainController {
         thread.start();
     }
 
-    /**
-     * Сброс истории свободного чата и очистка контекста диалога
-     */
+    // ==========================================
+    // ЛОГИКА ВКЛАДКИ ИИ-АГЕНТА
+    // ==========================================
+
+    @FXML
+    private void handleAgentSelectFolder() {
+        DirectoryChooser directoryChooser = new DirectoryChooser();
+        directoryChooser.setTitle("Выберите рабочую папку для создания проекта");
+
+        Stage stage = (Stage) agentSelectFolderButton.getScene().getWindow();
+        File folder = directoryChooser.showDialog(stage);
+
+        if (folder != null) {
+            agentWorkDirInput.setText(folder.getAbsolutePath());
+        }
+    }
+
+    @FXML
+    private void handleAgentStartExecution() {
+        String folderPath = agentWorkDirInput.getText().trim();
+        String prompt = agentTaskPromptInput.getText().trim();
+        String selectedModel = (agentModelComboBox != null) ? agentModelComboBox.getValue() : null;
+
+        if (folderPath.isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.WARNING, "Пожалуйста, выберите рабочую папку!");
+            alert.showAndWait();
+            return;
+        }
+
+        if (prompt.isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.WARNING, "Пожалуйста, опишите задачу для агента!");
+            alert.showAndWait();
+            return;
+        }
+
+        if (selectedModel == null || selectedModel.isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.WARNING, "Пожалуйста, выберите модель для генерации!");
+            alert.showAndWait();
+            return;
+        }
+
+        File targetDir = new File(folderPath);
+        if (!targetDir.exists()) {
+            targetDir.mkdirs();
+        }
+
+        agentStartButton.setDisable(true);
+        resetAgentLogHtml();
+
+        Task<Void> agentTask = new Task<>() {
+            @Override
+            protected Void call() throws Exception {
+                agentService.executeAgentTask(
+                        targetDir,
+                        prompt,
+                        selectedModel,
+                        logMessage -> Platform.runLater(() -> appendAgentLog(logMessage))
+                );
+                return null;
+            }
+        };
+
+        agentTask.setOnSucceeded(e -> agentStartButton.setDisable(false));
+        agentTask.setOnFailed(e -> {
+            agentStartButton.setDisable(false);
+            appendAgentLog("❌ **Произошла ошибка при работе агента:** " + agentTask.getException().getMessage());
+        });
+
+        Thread thread = new Thread(agentTask);
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    // ==========================================
+    // ЛОГИКА СВОБОДНОГО ЧАТА
+    // ==========================================
+
     @FXML
     private void handleClearGeneralChat() {
-        // 1. Очищаем накопленный контекст диалога
         generalChatHistory.clear();
-
-        // 2. Сбрасываем HTML в WebView
         resetGeneralChatHtml();
-
-        // 3. Выводим приветственное/системное сообщение
         appendGeneralChatMessage("Система", "🧹 **Чат и контекст диалога успешно сброшены.**");
     }
 
-    /**
-     * Отправка запроса в свободной вкладке чата с нативной поддержкой ролей в Ollama Chat API
-     */
     private void handleSendGeneralChatPrompt() {
         if (generalChatPromptInput == null) return;
 
@@ -291,20 +391,15 @@ public class MainController {
             return;
         }
 
-        // 1. Отображаем сообщение пользователя в WebView
         appendGeneralChatMessage("Вы", prompt);
-
-        // 2. Добавляем реплику пользователя в историю контекста
         generalChatHistory.add(new ChatMessage("user", prompt));
 
         generalChatPromptInput.clear();
         if (sendGeneralChatPromptButton != null) sendGeneralChatPromptButton.setDisable(true);
 
-        // 3. Асинхронный вызов Chat API с передачей всей коллекции history
         Task<String> chatTask = new Task<>() {
             @Override
             protected String call() {
-                // Отправляем всю историю через новый метод chatWithHistory
                 return ollamaClient.chatWithHistory(selectedModel, generalChatHistory);
             }
         };
@@ -313,12 +408,9 @@ public class MainController {
             if (sendGeneralChatPromptButton != null) sendGeneralChatPromptButton.setDisable(false);
             String response = chatTask.getValue();
 
-            // 4. Добавляем ответ ассистента в историю с явным указанием модели,
-            // чтобы при смене модели новый ИИ понимал, кто именно давал предыдущий ответ
             String historyContent = "[Модель: " + selectedModel + "]\n" + response;
             generalChatHistory.add(new ChatMessage("assistant", historyContent));
 
-            // 5. Выводим чистый ответ в UI (без служебного префикса)
             appendGeneralChatMessage("ИИ (" + selectedModel + ")", response);
         });
 
@@ -332,21 +424,9 @@ public class MainController {
         thread.start();
     }
 
-    /**
-     * Сборка накопленного контекста переписки в единый промпт
-     */
-    private String buildPromptWithHistory() {
-        StringBuilder sb = new StringBuilder();
-        for (ChatMessage msg : generalChatHistory) {
-            if ("user".equalsIgnoreCase(msg.getRole())) {
-                sb.append("User: ").append(msg.getContent()).append("\n\n");
-            } else {
-                sb.append("Assistant: ").append(msg.getContent()).append("\n\n");
-            }
-        }
-        sb.append("Assistant: ");
-        return sb.toString();
-    }
+    // ==========================================
+    // ЛОГИКА АНАЛИЗА КОДА И СКАНЕРА
+    // ==========================================
 
     private void handleSelectAllToggle() {
         TreeItem<File> root = fileTreeView.getRoot();
@@ -745,6 +825,10 @@ public class MainController {
         thread.start();
     }
 
+    // ==========================================
+    // ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ И РЕНДЕРИНГ WEBVIEW
+    // ==========================================
+
     private String getBaseCss() {
         return "<style>"
                 + "body { font-family: 'Segoe UI', Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 10px; padding: 0; }"
@@ -759,6 +843,13 @@ public class MainController {
                 + "</style>";
     }
 
+    private void renderHtml(WebView webView, StringBuilder htmlContent) {
+        if (webView != null) {
+            String fullHtml = htmlContent.toString() + "</body></html>";
+            webView.getEngine().loadContent(fullHtml);
+        }
+    }
+
     private void resetChatHtml() {
         chatHistoryHtml.setLength(0);
         chatHistoryHtml.append("<!DOCTYPE html><html><head>").append(getBaseCss()).append("</head><body>");
@@ -771,28 +862,38 @@ public class MainController {
         renderHtml(generalChatWebView, generalChatHtml);
     }
 
-    private void appendMessageToChatHtml(String sender, String markdownText) {
-        String htmlContent = htmlRenderer.render(markdownParser.parse(markdownText));
-        chatHistoryHtml.append("<div class='msg-card'>")
-                .append("<div class='sender'>").append(sender).append("</div>")
+    private void resetAgentLogHtml() {
+        agentLogHtml.setLength(0);
+        agentLogHtml.append("<!DOCTYPE html><html><head>").append(getBaseCss()).append("</head><body>");
+        renderHtml(agentLogWebView, agentLogHtml);
+    }
+
+    private void appendMessageToChatHtml(String sender, String markdownMessage) {
+        if (chatWebView == null) return;
+        String htmlContent = htmlRenderer.render(markdownParser.parse(markdownMessage));
+        chatHistoryHtml.append("<div class='msg-card'><div class='sender'>")
+                .append(sender)
+                .append("</div>")
                 .append(htmlContent)
                 .append("</div>");
         renderHtml(chatWebView, chatHistoryHtml);
     }
 
-    private void appendGeneralChatMessage(String sender, String markdownText) {
+    private void appendGeneralChatMessage(String sender, String markdownMessage) {
         if (generalChatWebView == null) return;
-        String htmlContent = htmlRenderer.render(markdownParser.parse(markdownText));
-        generalChatHtml.append("<div class='msg-card'>")
-                .append("<div class='sender'>").append(sender).append("</div>")
+        String htmlContent = htmlRenderer.render(markdownParser.parse(markdownMessage));
+        generalChatHtml.append("<div class='msg-card'><div class='sender'>")
+                .append(sender)
+                .append("</div>")
                 .append(htmlContent)
                 .append("</div>");
         renderHtml(generalChatWebView, generalChatHtml);
     }
 
-    private void renderHtml(WebView webView, StringBuilder htmlBuffer) {
-        if (webView == null) return;
-        String fullHtml = htmlBuffer.toString() + "<script>window.scrollTo(0, document.body.scrollHeight);</script></body></html>";
-        Platform.runLater(() -> webView.getEngine().loadContent(fullHtml));
+    private void appendAgentLog(String markdownMessage) {
+        if (agentLogWebView == null) return;
+        String htmlContent = htmlRenderer.render(markdownParser.parse(markdownMessage));
+        agentLogHtml.append("<div class='msg-card'>").append(htmlContent).append("</div>");
+        renderHtml(agentLogWebView, agentLogHtml);
     }
 }

@@ -10,6 +10,7 @@
 <?import javafx.scene.control.TabPane?>
 <?import javafx.scene.control.TableColumn?>
 <?import javafx.scene.control.TableView?>
+<?import javafx.scene.control.TextArea?>
 <?import javafx.scene.control.TextField?>
 <?import javafx.scene.control.TreeView?>
 <?import javafx.scene.layout.AnchorPane?>
@@ -174,9 +175,7 @@
                                     </Label>
                                     <ComboBox fx:id="chatModelComboBox" prefWidth="250.0" promptText="Выберите модель..." style="-fx-background-radius: 4;" />
                                     <Button fx:id="refreshModelsButton" mnemonicParsing="false" style="-fx-background-color: #7f8c8d; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 4;" text="🔄 Обновить список" />
-                                    <Button fx:id="clearGeneralChatButton"
-                                            text="🗑 Сбросить чат"
-                                            onAction="#handleClearGeneralChat" />
+                                    <Button fx:id="clearGeneralChatButton" onAction="#handleClearGeneralChat" text="🗑 Сбросить чат" />
                                 </children>
                             </HBox>
 
@@ -194,6 +193,82 @@
                     </VBox>
                 </content>
             </Tab>
+
+            <!-- ВКЛАДКА 3: ИИ-Агент автономной генерации проекта -->
+            <Tab text="🤖 ИИ-Агент Генерации">
+                <content>
+                    <VBox spacing="10.0">
+                        <padding>
+                            <Insets bottom="5.0" left="5.0" right="5.0" top="10.0" />
+                        </padding>
+                        <children>
+                            <!-- Верхняя панель конфигурации -->
+                            <VBox spacing="10.0" style="-fx-background-color: #ffffff; -fx-padding: 12; -fx-background-radius: 6; -fx-border-color: #e0e0e0; -fx-border-radius: 6;">
+                                <children>
+                                    <!-- Строка 1: Выбор рабочей папки -->
+                                    <HBox alignment="CENTER_LEFT" spacing="10.0">
+                                        <children>
+                                            <Label prefWidth="160.0" text="Рабочая папка проекта:" textFill="#2c3e50">
+                                                <font>
+                                                    <Font name="System Bold" size="13.0" />
+                                                </font>
+                                            </Label>
+                                            <TextField fx:id="agentWorkDirInput" editable="false" promptText="Выберите директорию куда агент будет записывать файлы..." style="-fx-background-radius: 4;" HBox.hgrow="ALWAYS" />
+                                            <Button fx:id="agentSelectFolderButton" mnemonicParsing="false" onAction="#handleAgentSelectFolder" style="-fx-background-color: #34495e; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 4;" text="📁 Обзор..." />
+                                        </children>
+                                    </HBox>
+
+                                    <!-- Строка 2: Выбор модели -->
+                                    <HBox alignment="CENTER_LEFT" spacing="10.0">
+                                        <children>
+                                            <Label prefWidth="160.0" text="Модель генератора:" textFill="#2c3e50">
+                                                <font>
+                                                    <Font name="System Bold" size="13.0" />
+                                                </font>
+                                            </Label>
+                                            <ComboBox fx:id="agentModelComboBox" prefWidth="250.0" promptText="Выберите модель..." style="-fx-background-radius: 4;" />
+                                        </children>
+                                    </HBox>
+                                </children>
+                            </VBox>
+
+                            <!-- Поле ввода описания проекта/задачи -->
+                            <VBox spacing="5.0">
+                                <children>
+                                    <Label text="Описание задачи для ИИ-Агента:" textFill="#2c3e50">
+                                        <font>
+                                            <Font name="System Bold" size="12.0" />
+                                        </font>
+                                    </Label>
+                                    <TextArea fx:id="agentTaskPromptInput" prefRowCount="3" promptText="Опишите желаемый проект или модуль (например: 'Создай Spring Boot приложение с контроллером NoteController, моделью Note и файлом pom.xml')..." style="-fx-background-radius: 6;" wrapText="true" />
+                                    <HBox alignment="CENTER_RIGHT">
+                                        <children>
+                                            <Button fx:id="agentStartButton" mnemonicParsing="false" onAction="#handleAgentStartExecution" style="-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 6; -fx-padding: 8 20;" text="🚀 Запустить генерацию проекта">
+                                                <font>
+                                                    <Font size="13.0" />
+                                                </font>
+                                            </Button>
+                                        </children>
+                                    </HBox>
+                                </children>
+                            </VBox>
+
+                            <!-- Логи работы агента в реальном времени -->
+                            <VBox spacing="5.0" VBox.vgrow="ALWAYS">
+                                <children>
+                                    <Label text="Ход выполнения и логирование агента:" textFill="#7f8c8d">
+                                        <font>
+                                            <Font name="System Bold" size="12.0" />
+                                        </font>
+                                    </Label>
+                                    <WebView fx:id="agentLogWebView" VBox.vgrow="ALWAYS" />
+                                </children>
+                            </VBox>
+                        </children>
+                    </VBox>
+                </content>
+            </Tab>
+
         </tabs>
     </TabPane>
 </VBox>
