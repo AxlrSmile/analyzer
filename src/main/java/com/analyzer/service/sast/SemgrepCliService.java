@@ -26,6 +26,34 @@ public class SemgrepCliService {
 
     public SemgrepReportService.Report scan(Path projectRoot, List<Path> selectedFiles) throws IOException {
         Path root = projectRoot.toRealPath();
+        return scanWithExecutable(root, selectedFiles, findExecutable(root));
+    }
+
+    /** Rerun the same rules against a temporary candidate, without changing the project. */
+    public SemgrepReportService.Report scanTemporaryCandidate(
+            Path originalProjectRoot, String sourceName, String proposedCode) throws IOException {
+        Path trustedRoot = originalProjectRoot.toRealPath();
+        if (!Files.isDirectory(trustedRoot) || sourceName == null || sourceName.isBlank()
+                || !Path.of(sourceName).getFileName().toString().equals(sourceName)
+                || sourceName.contains("/") || sourceName.contains("\\")
+                || sourceName.equals(".") || sourceName.equals("..")
+                || proposedCode == null || proposedCode.length() > 1_000_000) {
+            throw new IOException("Недопустимые параметры повторного сканирования");
+        }
+        Path executable = findExecutable(trustedRoot);
+        Path isolated = Files.createTempDirectory("analyzer-fix-preview-");
+        Path candidate = isolated.resolve(sourceName);
+        try {
+            Files.writeString(candidate, proposedCode, StandardCharsets.UTF_8);
+            return scanWithExecutable(isolated, List.of(candidate), executable);
+        } finally {
+            Files.deleteIfExists(candidate);
+            Files.deleteIfExists(isolated);
+        }
+    }
+
+    private SemgrepReportService.Report scanWithExecutable(
+            Path root, List<Path> selectedFiles, Path executable) throws IOException {
         if (!Files.isDirectory(root)) {
             throw new IOException("Папка проекта недоступна");
         }
@@ -35,7 +63,6 @@ public class SemgrepCliService {
         Path report = Files.createTempFile("code-analyzer-semgrep-", ".json");
         Path log = Files.createTempFile("code-analyzer-semgrep-", ".log");
         try {
-            Path executable = findExecutable(root);
             List<String> command = buildCommand(executable, root, selectedFiles, report);
             ProcessBuilder builder = new ProcessBuilder(command);
             builder.directory(root.toFile());
