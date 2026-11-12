@@ -8,6 +8,9 @@ import com.analyzer.service.ai.OllamaClient;
 import com.analyzer.service.ai.OllamaClient.ChatMessage;
 import com.analyzer.service.fix.FixRecommendationAgent;
 import com.analyzer.service.fix.FixReviewService;
+import com.analyzer.service.fix.FixCweReviewService;
+import com.analyzer.service.fix.FixExperimentService;
+import com.analyzer.service.fix.FixValidationService;
 import com.analyzer.service.fix.FixProposal;
 import com.analyzer.service.experiment.ScanExportService;
 import com.analyzer.service.parser.CodeParser;
@@ -31,6 +34,7 @@ import javafx.scene.input.*;
 import javafx.scene.web.WebView;
 import javafx.geometry.Insets;
 import javafx.scene.layout.VBox;
+import javafx.scene.layout.HBox;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
@@ -41,7 +45,11 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.StandardOpenOption;
 import java.util.HashSet;
+import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.Set;
 import java.util.ArrayList;
 import java.util.List;
@@ -131,6 +139,9 @@ public class MainController {
     private final PdfReportService pdfReportService;
     private final FixRecommendationAgent fixRecommendationAgent;
     private final FixReviewService fixReviewService;
+    private final FixValidationService fixValidationService;
+    private final FixExperimentService fixExperimentService;
+    private final FixCweReviewService fixCweReviewService;
     private final AgentService agentService;
     private final SecurityScannerAgent securityScannerAgent;
     private final SemgrepReportService semgrepReportService;
@@ -162,6 +173,9 @@ public class MainController {
                           PdfReportService pdfReportService,
                           FixRecommendationAgent fixRecommendationAgent,
                           FixReviewService fixReviewService,
+                          FixValidationService fixValidationService,
+                          FixExperimentService fixExperimentService,
+                          FixCweReviewService fixCweReviewService,
                           AgentService agentService,
                           SecurityScannerAgent securityScannerAgent,
                           BenchmarkService benchmarkService,
@@ -174,6 +188,9 @@ public class MainController {
         this.pdfReportService = pdfReportService;
         this.fixRecommendationAgent = fixRecommendationAgent;
         this.fixReviewService = fixReviewService;
+        this.fixValidationService = fixValidationService;
+        this.fixExperimentService = fixExperimentService;
+        this.fixCweReviewService = fixCweReviewService;
         this.agentService = agentService;
         this.securityScannerAgent = securityScannerAgent;
         this.benchmarkService = benchmarkService;
@@ -1170,7 +1187,7 @@ public class MainController {
 
     private void showFixProposalDialog(FixProposal proposal) {
         Dialog<Void> dialog = new Dialog<>();
-        dialog.setTitle("Fix Recommendation Agent — ручной просмотр");
+        dialog.setTitle("Fix Recommendation Agent — проверка 8.9 и ручной просмотр");
         dialog.setHeaderText("Предложение для: " + proposal.sourcePath().getFileName());
         ButtonType saveType = new ButtonType("Сохранить отдельно...", ButtonBar.ButtonData.APPLY);
         ButtonType checkType = new ButtonType("Повторно проверить Semgrep", ButtonBar.ButtonData.OTHER);
@@ -1187,17 +1204,110 @@ public class MainController {
         Label info = new Label(proposal.reviewNotes()
                 + "\nСохраняйте только в новый файл; код LLM не выполняется автоматически.");
         info.setWrapText(true);
+        Label validationStatus = new Label("Java: NOT_CHECKED — подготовка к проверке...");
+        validationStatus.setWrapText(true);
+        TextArea validationDetails = new TextArea("Предложение ещё не проверено компилятором Java.");
+        validationDetails.setEditable(false);
+        validationDetails.setWrapText(true);
+        validationDetails.setPrefRowCount(3);
+        validationDetails.setMaxHeight(100);
+        Button validateJava = new Button("Повторить проверку Java");
+        Button saveValidationReport = new Button("Сохранить отчёт проверки TXT");
+        saveValidationReport.setDisable(true);
+        Button recordExperiment = new Button("Записать эксперимент 8.9");
+        Button exportExperiments = new Button("Экспорт журнала CSV/MD");
+        HBox validationActions = new HBox(10, validateJava, saveValidationReport);
+        HBox experimentActions = new HBox(10, recordExperiment, exportExperiments);
         Label recheckStatus = new Label("Semgrep для предложенного кода ещё не запускался.");
         recheckStatus.setWrapText(true);
-        VBox layout = new VBox(8, info, tabs, recheckStatus);
+        VBox layout = new VBox(8, info, tabs, validationStatus, validationDetails,
+                validationActions, recheckStatus, experimentActions);
         layout.setPadding(new Insets(8));
         VBox.setVgrow(tabs, javafx.scene.layout.Priority.ALWAYS);
         dialog.getDialogPane().setContent(layout);
-        dialog.getDialogPane().setPrefSize(950, 650);
+        dialog.getDialogPane().setPrefSize(950, 720);
 
+        // Compiles ONLY in a temporary workspace: annotation processors are disabled.
+        // This is not a substitute for tests or a real OS sandbox.
+        final FixValidationService.Result[] latestValidation = new FixValidationService.Result[1];
+        final FixReviewService.Recheck[] latestSemgrep = new FixReviewService.Recheck[1];
         Button save = (Button) dialog.getDialogPane().lookupButton(saveType);
+        save.setDisable(true);
+        Runnable startValidation = () -> {
+            validateJava.setDisable(true);
+            save.setDisable(true);
+            saveValidationReport.setDisable(true);
+            latestValidation[0] = null;
+            validationStatus.setText("Java: NOT_CHECKED — проверяется компиляция и API...");
+            validationDetails.setText("javac компилирует исходник и предложение отдельно, "
+                    + "без запуска программы и без annotation processors.");
+            Task<FixValidationService.Result> task = new Task<>() {
+                @Override protected FixValidationService.Result call() throws Exception {
+                    return fixValidationService.validate(proposal);
+                }
+            };
+            task.setOnSucceeded(done -> {
+                validateJava.setDisable(false);
+                save.setDisable(false); // Save separately for research, even if rejected, with explicit warning.
+                saveValidationReport.setDisable(false);
+                latestValidation[0] = task.getValue();
+                validationStatus.setText("Java: " + task.getValue().summary());
+                validationDetails.setText(task.getValue().details());
+            });
+            task.setOnFailed(done -> {
+                validateJava.setDisable(false);
+                // No validation verdict is claimed after an exception.
+                validationStatus.setText("Java: NOT_CHECKED — проверка завершилась ошибкой");
+                Throwable ex = task.getException();
+                validationDetails.setText(ex == null ? "Неизвестная ошибка"
+                        : String.valueOf(ex.getMessage()));
+                save.setDisable(false); // Export separate file is still possible for manual investigation.
+            });
+            Thread worker = new Thread(task, "fix-java-validation-88");
+            worker.setDaemon(true);
+            worker.start();
+        };
+        validateJava.setOnAction(event -> startValidation.run());
+
+        saveValidationReport.setOnAction(event -> {
+            if (latestValidation[0] == null) return;
+            FileChooser chooser = new FileChooser();
+            chooser.setTitle("Экспортировать отчёт проверки в новый TXT");
+            chooser.setInitialFileName(proposal.sourcePath().getFileName() + ".validation.txt");
+            File selected = chooser.showSaveDialog(dialog.getOwner());
+            if (selected == null) return;
+            try {
+                fixReviewService.ensureUnchanged(proposal);
+                String semgrepSection = latestSemgrep[0] == null
+                        ? "\nSemgrep: NOT_CHECKED (повторная проверка не завершена).\n"
+                        : "\nSemgrep: исходник=" + latestSemgrep[0].baselineFindings()
+                            + ", предложение=" + latestSemgrep[0].candidateFindings()
+                            + ", исходные правила=" + latestSemgrep[0].baselineRules()
+                            + ", правила предложения=" + latestSemgrep[0].candidateRules() + "\n";
+                String reportText = latestValidation[0].asText(proposal) + semgrepSection
+                        + "Исходная CWE требует отдельного ручного подтверждения; "
+                        + "снижение числа срабатываний не доказывает безопасность.\n";
+                Files.writeString(selected.toPath(), reportText,
+                        StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+            } catch (IOException ex) {
+                new Alert(Alert.AlertType.WARNING,
+                        "Отчёт не сохранён (существующий файл не перезаписывается): "
+                                + ex.getMessage()).showAndWait();
+            }
+        });
         save.addEventFilter(ActionEvent.ACTION, event -> {
             event.consume();
+            if (latestValidation[0] == null
+                    || latestValidation[0].overall() != FixValidationService.Status.PASSED) {
+                String status = latestValidation[0] == null ? "NOT_CHECKED"
+                        : latestValidation[0].overall().name();
+                Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                        "Проверка исправления: " + status + ". "
+                                + "Предложение нельзя считать готовым к применению. "
+                                + "Экспортировать отдельно только для исследования?",
+                        ButtonType.YES, ButtonType.CANCEL);
+                if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.YES) return;
+            }
             FileChooser chooser = new FileChooser();
             chooser.setTitle("Экспортировать предложенный код в новый файл");
             String name = proposal.sourcePath().getFileName().toString();
@@ -1227,6 +1337,7 @@ public class MainController {
             }
             Path root = tree.getValue().toPath();
             check.setDisable(true);
+            latestSemgrep[0] = null;
             recheckStatus.setText("Semgrep сравнивает оригинал и предложенный код...");
             Task<FixReviewService.Recheck> task = new Task<>() {
                 @Override protected FixReviewService.Recheck call() throws Exception {
@@ -1236,6 +1347,7 @@ public class MainController {
             task.setOnSucceeded(done -> {
                 check.setDisable(false);
                 var result = task.getValue();
+                latestSemgrep[0] = result;
                 recheckStatus.setText("Semgrep: исходник — " + result.baselineFindings()
                         + ", предложение — " + result.candidateFindings()
                         + ". Оцените правила вручную: " + result.candidateRules()
@@ -1251,7 +1363,130 @@ public class MainController {
             thread.setDaemon(true);
             thread.start();
         });
+        recordExperiment.setOnAction(event -> recordFixExperiment(proposal,
+                latestValidation[0], latestSemgrep[0]));
+        exportExperiments.setOnAction(event -> exportFixExperiments());
+        startValidation.run(); // Automatic validation before user can export a proposal.
         dialog.showAndWait();
+    }
+
+    /** 8.9: manual evidence registration. Never executes a generated fix or behavioral test. */
+    private void recordFixExperiment(FixProposal proposal, FixValidationService.Result validation,
+                                     FixReviewService.Recheck semgrep) {
+        try {
+            fixReviewService.ensureUnchanged(proposal);
+        } catch (IOException ex) {
+            new Alert(Alert.AlertType.WARNING, "Оригинал изменился: " + ex.getMessage()).showAndWait();
+            return;
+        }
+        String detected = scannedFiles.stream()
+                .filter(sf -> sf.getPath() != null && sf.getPath().toAbsolutePath().normalize()
+                        .equals(proposal.sourcePath().toAbsolutePath().normalize()))
+                .flatMap(sf -> sf.getVulnerabilities().stream())
+                .map(Vulnerability::getCwe)
+                .filter(value -> !FixExperimentService.normalizedCwe(value).equals("CWE-OTHER"))
+                .findFirst().orElse("CWE-OTHER");
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle("8.9 — Журнал функциональных экспериментов");
+        dialog.setHeaderText("Зафиксировать наблюдения: " + proposal.sourcePath().getFileName());
+        ComboBox<String> cweChoice = new ComboBox<>(FXCollections.observableArrayList(
+                "CWE-22", "CWE-89", "CWE-78", "CWE-79", "CWE-918", "CWE-611", "CWE-502", "CWE-OTHER"));
+        if (!cweChoice.getItems().contains(detected)) cweChoice.getItems().add(detected);
+        cweChoice.setValue(detected);
+        Label intro = new Label("Отмечайте PASSED/FAILED только по отдельно выполненным тестам. "
+                + "SKIPPED означает, что тест не состоялся. Недоверенный код здесь НЕ запускается.");
+        intro.setWrapText(true);
+        Label cweReview = new Label();
+        cweReview.setWrapText(true);
+        VBox probes = new VBox(7);
+        Map<FixExperimentService.Scenario, ComboBox<FixExperimentService.Status>> statuses = new LinkedHashMap<>();
+        Runnable reload = () -> {
+            String cwe = cweChoice.getValue();
+            var review = fixCweReviewService.inspect(cwe, proposal.proposedContent());
+            cweReview.setText("Статическая подсказка: " + review.status() + " — " + review.explanation());
+            statuses.clear();
+            probes.getChildren().clear();
+            for (var scenario : FixExperimentService.scenariosFor(cwe)) {
+                Label title = new Label(scenario.label());
+                title.setWrapText(true);
+                title.setMaxWidth(Double.MAX_VALUE);
+                ComboBox<FixExperimentService.Status> choice = new ComboBox<>(FXCollections.observableArrayList(
+                        FixExperimentService.Status.values()));
+                choice.setValue(FixExperimentService.Status.NOT_CHECKED);
+                choice.setMinWidth(150);
+                HBox line = new HBox(9, choice, title);
+                HBox.setHgrow(title, javafx.scene.layout.Priority.ALWAYS);
+                statuses.put(scenario, choice);
+                probes.getChildren().add(line);
+            }
+        };
+        cweChoice.setOnAction(event -> reload.run());
+        reload.run();
+        Label javaStatus = new Label("Java: " + (validation == null ? "NOT_CHECKED" : validation.summary())
+                + " | Semgrep: " + (semgrep == null ? "NOT_CHECKED" : semgrep.baselineFindings()
+                + " → " + semgrep.candidateFindings()));
+        javaStatus.setWrapText(true);
+        Label notePrompt = new Label("Краткое основание (например: результат отдельного H2-теста; "
+                + "Windows запретила создавать symlink). Не вставляйте код и секреты:");
+        notePrompt.setWrapText(true);
+        TextArea note = new TextArea();
+        note.setPromptText("Основание для ручных статусов; не более 400 символов");
+        note.setPrefRowCount(3);
+        note.setWrapText(true);
+        VBox content = new VBox(11, intro, new Label("Категория CWE:"), cweChoice,
+                cweReview, javaStatus, new Label("Функциональные сценарии:"), probes, notePrompt, note);
+        content.setPadding(new Insets(10));
+        content.setPrefWidth(700);
+        ButtonType recordButton = new ButtonType("Добавить в журнал", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(recordButton, ButtonType.CANCEL);
+        dialog.getDialogPane().setContent(new ScrollPane(content));
+        dialog.getDialogPane().setPrefSize(760, 600);
+        Button button = (Button) dialog.getDialogPane().lookupButton(recordButton);
+        button.addEventFilter(ActionEvent.ACTION, event -> {
+            event.consume();
+            try {
+                fixReviewService.ensureUnchanged(proposal);
+                List<FixExperimentService.Observation> observations = new ArrayList<>();
+                statuses.forEach((scenario, choice) -> observations.add(
+                        new FixExperimentService.Observation(scenario, choice.getValue())));
+                var recorded = fixExperimentService.record(proposal, cweChoice.getValue(),
+                        validation, semgrep, observations, note.getText());
+                new Alert(Alert.AlertType.INFORMATION, "Эксперимент №" + recorded.number()
+                        + " сохранён в журнале сеанса. Итог: " + recorded.verdict()
+                        + ". Не забудьте экспортировать CSV/MD до закрытия приложения.").showAndWait();
+                dialog.close();
+            } catch (IOException | IllegalArgumentException ex) {
+                new Alert(Alert.AlertType.WARNING, "Запись отклонена: " + ex.getMessage()).showAndWait();
+            }
+        });
+        dialog.showAndWait();
+    }
+
+    private void exportFixExperiments() {
+        if (fixExperimentService.entries().isEmpty()) {
+            new Alert(Alert.AlertType.INFORMATION, "Журнал пуст. Сначала добавьте эксперимент 8.9.").showAndWait();
+            return;
+        }
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Экспорт журнала экспериментов 8.9 (без исходного кода)");
+        chooser.setInitialFileName("fix-experiments-8.9.csv");
+        chooser.getExtensionFilters().addAll(
+                new FileChooser.ExtensionFilter("CSV таблица (*.csv)", "*.csv"),
+                new FileChooser.ExtensionFilter("Markdown отчёт (*.md)", "*.md"));
+        File file = chooser.showSaveDialog(null);
+        if (file == null) return;
+        try {
+            if (file.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".md")) {
+                fixExperimentService.exportMarkdown(file.toPath());
+            } else {
+                fixExperimentService.exportCsv(file.toPath());
+            }
+            new Alert(Alert.AlertType.INFORMATION, "Экспортировано " + fixExperimentService.entries().size()
+                    + " экспериментов. Коды и абсолютные пути не включены. "
+                    + "Повторное сохранение требует нового имени файла.").showAndWait();
+        } catch (IOException ex) {
+            new Alert(Alert.AlertType.WARNING, "Не удалось сохранить отчёт: " + ex.getMessage()).showAndWait();
+        }
     }
 
     private static TextArea fixPreviewArea(String content) {

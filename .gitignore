@@ -46,3 +46,13 @@ pip-*.whl
 .env
 .env.*
 !.env.example
+
+# 8.8: locally generated LLM fixes and temporary validation work
+fix-validation/
+*.proposed.java
+*.validation.txt
+
+# 8.9: local research journal and charts (may contain manually entered notes)
+fix-experiments-*.csv
+fix-experiments-*.md
+fix-experiments-*.svg
