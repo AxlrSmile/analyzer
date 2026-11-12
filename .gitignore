@@ -31,3 +31,18 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Local security tooling and generated results (do not commit) ###
+.venv/
+.venv-*/
+__pycache__/
+*.py[cod]
+ci-reports/
+*-security-findings.json
+semgrep-results.json
+semgrep-benchmark.json
+*.sarif
+pip-*.whl
+.env
+.env.*
+!.env.example

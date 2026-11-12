@@ -3,12 +3,17 @@ package com.analyzer.ui.controller;
 import com.analyzer.domain.model.SourceFile;
 import com.analyzer.domain.model.Vulnerability;
 import com.analyzer.service.agent.AgentService;
+import com.analyzer.service.agent.SecurityScannerAgent;
 import com.analyzer.service.ai.OllamaClient;
+import com.analyzer.service.ai.OllamaClient.ChatMessage;
 import com.analyzer.service.fix.FileFixService;
+import com.analyzer.service.experiment.ScanExportService;
 import com.analyzer.service.parser.CodeParser;
 import com.analyzer.service.parser.FileAnalyzer;
 import com.analyzer.service.report.PdfReportService;
 import com.analyzer.service.scanner.ProjectScanner;
+import com.analyzer.service.scanner.UnifiedScanService;
+import com.analyzer.service.sast.SemgrepReportService;
 import com.vladsch.flexmark.html.HtmlRenderer;
 import com.vladsch.flexmark.parser.Parser;
 import javafx.application.Platform;
@@ -29,8 +34,14 @@ import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.ArrayList;
 import java.util.List;
+import com.analyzer.domain.model.BenchmarkResult;
+import com.analyzer.service.benchmark.BenchmarkService;
 
 @Component
 public class MainController {
@@ -43,10 +54,14 @@ public class MainController {
     @FXML private Button clearButton;
     @FXML private Button scanButton;
     @FXML private Button exportPdfButton;
+    @FXML private Button exportResultsButton;
+    @FXML private Button importSemgrepButton;
     @FXML private Button pasteCodeButton;
     @FXML private Button fixAllButton;
     @FXML private Button fixCurrentFileButton;
 
+    // Выбор модели для сканирования (поддерживает оба возможных fx:id из разметки)
+    @FXML private ComboBox<String> scanModelComboBox;
     @FXML private ComboBox<String> modelComboBox;
 
     @FXML private TreeView<File> fileTreeView;
@@ -54,6 +69,7 @@ public class MainController {
     @FXML private TableColumn<Vulnerability, String> titleColumn;
     @FXML private TableColumn<Vulnerability, String> severityColumn;
     @FXML private TableColumn<Vulnerability, String> linesColumn;
+    @FXML private TableColumn<Vulnerability, String> validationColumn;
 
     @FXML private WebView chatWebView;
     @FXML private TextField promptInputField;
@@ -80,21 +96,47 @@ public class MainController {
     @FXML private WebView agentLogWebView;
 
     // ==========================================
+    // Вкладка 4: Сравнительный бенчмаркинг
+    // ==========================================
+    @FXML private Button selectBenchmarkFolderButton;
+    @FXML private Label benchmarkFolderLabel;
+    @FXML private Button startBenchmarkButton;
+    @FXML private TableView<BenchmarkResult> benchmarkTable;
+    @FXML private TableColumn<BenchmarkResult, String> bmModelCol;
+    @FXML private TableColumn<BenchmarkResult, Integer> bmFilesCol;
+    @FXML private TableColumn<BenchmarkResult, Integer> bmTpCol;
+    @FXML private TableColumn<BenchmarkResult, Integer> bmFpCol;
+    @FXML private TableColumn<BenchmarkResult, Integer> bmTnCol;
+    @FXML private TableColumn<BenchmarkResult, Integer> bmFnCol;
+    @FXML private TableColumn<BenchmarkResult, String> bmPrecisionCol;
+    @FXML private TableColumn<BenchmarkResult, String> bmRecallCol;
+    @FXML private TableColumn<BenchmarkResult, String> bmF1Col;
+    @FXML private TableColumn<BenchmarkResult, String> bmTotalTimeCol;
+    @FXML private TableColumn<BenchmarkResult, String> bmAvgTimeCol;
+
+    private final BenchmarkService benchmarkService;
+    private File benchmarkFolder;
+
+    // ==========================================
     // Сервисы Spring
     // ==========================================
-    private final ProjectScanner projectScanner;
     private final FileAnalyzer fileAnalyzer;
     private final CodeParser codeParser;
     private final OllamaClient ollamaClient;
     private final PdfReportService pdfReportService;
     private final FileFixService fileFixService;
     private final AgentService agentService;
+    private final SecurityScannerAgent securityScannerAgent;
+    private final SemgrepReportService semgrepReportService;
+    private final UnifiedScanService unifiedScanService;
+    private final ScanExportService scanExportService;
+    private String lastScanModel;
+    private UnifiedScanService.ScanResult lastScanResult;
 
     // ==========================================
     // Внутренние состояния и буферы
     // ==========================================
     private final ObservableList<SourceFile> scannedFiles = FXCollections.observableArrayList();
-    private File selectedProjectFolder = null;
 
     private final Parser markdownParser = Parser.builder().build();
     private final HtmlRenderer htmlRenderer = HtmlRenderer.builder().build();
@@ -113,30 +155,23 @@ public class MainController {
                           OllamaClient ollamaClient,
                           PdfReportService pdfReportService,
                           FileFixService fileFixService,
-                          AgentService agentService) {
-        this.projectScanner = projectScanner;
+                          AgentService agentService,
+                          SecurityScannerAgent securityScannerAgent,
+                          BenchmarkService benchmarkService,
+                          SemgrepReportService semgrepReportService,
+                          UnifiedScanService unifiedScanService,
+                          ScanExportService scanExportService) {
         this.fileAnalyzer = fileAnalyzer;
         this.codeParser = codeParser;
         this.ollamaClient = ollamaClient;
         this.pdfReportService = pdfReportService;
         this.fileFixService = fileFixService;
         this.agentService = agentService;
-    }
-
-    /**
-     * DTO для сохранения роли и текста сообщения в истории контекста
-     */
-    public static class ChatMessage {
-        private final String role; // "user" или "assistant"
-        private final String content;
-
-        public ChatMessage(String role, String content) {
-            this.role = role;
-            this.content = content;
-        }
-
-        public String getRole() { return role; }
-        public String getContent() { return content; }
+        this.securityScannerAgent = securityScannerAgent;
+        this.benchmarkService = benchmarkService;
+        this.semgrepReportService = semgrepReportService;
+        this.unifiedScanService = unifiedScanService;
+        this.scanExportService = scanExportService;
     }
 
     @FXML
@@ -145,6 +180,8 @@ public class MainController {
         if (titleColumn != null) titleColumn.setCellValueFactory(new PropertyValueFactory<>("title"));
         if (severityColumn != null) severityColumn.setCellValueFactory(new PropertyValueFactory<>("severity"));
         if (linesColumn != null) linesColumn.setCellValueFactory(new PropertyValueFactory<>("lineRange"));
+        if (validationColumn != null) validationColumn.setCellValueFactory(
+                new PropertyValueFactory<>("validationStatusLabel"));
 
         // 2. Оформление дерева файлов с чекбоксами и статусами
         if (fileTreeView != null) {
@@ -222,6 +259,8 @@ public class MainController {
         if (scanButton != null) scanButton.setOnAction(event -> handleStartScanClick());
         if (pasteCodeButton != null) pasteCodeButton.setOnAction(event -> handlePasteAndAnalyzeCode());
         if (exportPdfButton != null) exportPdfButton.setOnAction(event -> handleExportPdfClick());
+        if (exportResultsButton != null) exportResultsButton.setOnAction(event -> handleExportResultsClick());
+        if (importSemgrepButton != null) importSemgrepButton.setOnAction(event -> handleImportSemgrepClick());
         if (sendPromptButton != null) sendPromptButton.setOnAction(event -> handleSendPromptClick());
         if (promptInputField != null) promptInputField.setOnAction(event -> handleSendPromptClick());
         if (fixCurrentFileButton != null) fixCurrentFileButton.setOnAction(event -> handleFixCurrentFileClick());
@@ -251,6 +290,21 @@ public class MainController {
             }
         });
 
+        // Настройка колонок таблицы бенчмарка
+        if (benchmarkTable != null) {
+            bmModelCol.setCellValueFactory(new PropertyValueFactory<>("modelName"));
+            bmFilesCol.setCellValueFactory(new PropertyValueFactory<>("totalFiles"));
+            bmTpCol.setCellValueFactory(new PropertyValueFactory<>("truePositives"));
+            bmFpCol.setCellValueFactory(new PropertyValueFactory<>("falsePositives"));
+            bmTnCol.setCellValueFactory(new PropertyValueFactory<>("trueNegatives"));
+            bmFnCol.setCellValueFactory(new PropertyValueFactory<>("falseNegatives"));
+            bmPrecisionCol.setCellValueFactory(new PropertyValueFactory<>("precisionFormatted"));
+            bmRecallCol.setCellValueFactory(new PropertyValueFactory<>("recallFormatted"));
+            bmF1Col.setCellValueFactory(new PropertyValueFactory<>("f1ScoreFormatted"));
+            bmTotalTimeCol.setCellValueFactory(new PropertyValueFactory<>("totalTimeFormatted"));
+            bmAvgTimeCol.setCellValueFactory(new PropertyValueFactory<>("avgTimeFormatted"));
+        }
+
         // Сброс окон WebView и загрузка моделей
         resetChatHtml();
         resetGeneralChatHtml();
@@ -258,9 +312,6 @@ public class MainController {
         loadAvailableModels();
     }
 
-    /**
-     * Загрузка списка доступных моделей Ollama в ComboBox компоненты
-     */
     private void loadAvailableModels() {
         Task<List<String>> task = new Task<>() {
             @Override
@@ -273,6 +324,10 @@ public class MainController {
             List<String> models = task.getValue();
             if (models != null && !models.isEmpty()) {
                 ObservableList<String> modelList = FXCollections.observableArrayList(models);
+                if (scanModelComboBox != null) {
+                    scanModelComboBox.setItems(modelList);
+                    scanModelComboBox.getSelectionModel().selectFirst();
+                }
                 if (modelComboBox != null) {
                     modelComboBox.setItems(modelList);
                     modelComboBox.getSelectionModel().selectFirst();
@@ -293,6 +348,19 @@ public class MainController {
         thread.start();
     }
 
+    /**
+     * Получить выбранную модель для вкладки сканирования
+     */
+    private String getSelectedScanModel() {
+        if (scanModelComboBox != null && scanModelComboBox.getValue() != null && !scanModelComboBox.getValue().isBlank()) {
+            return scanModelComboBox.getValue();
+        }
+        if (modelComboBox != null && modelComboBox.getValue() != null && !modelComboBox.getValue().isBlank()) {
+            return modelComboBox.getValue();
+        }
+        return "qwen2.5-coder:7b";
+    }
+
     // ==========================================
     // ЛОГИКА ВКЛАДКИ ИИ-АГЕНТА
     // ==========================================
@@ -308,6 +376,63 @@ public class MainController {
         if (folder != null) {
             agentWorkDirInput.setText(folder.getAbsolutePath());
         }
+    }
+
+
+    @FXML
+    private void handleSelectBenchmarkFolder() {
+        DirectoryChooser chooser = new DirectoryChooser();
+        chooser.setTitle("Выберите директорию с бенчмарк-файлами");
+        Stage stage = (Stage) selectBenchmarkFolderButton.getScene().getWindow();
+        File dir = chooser.showDialog(stage);
+        if (dir != null) {
+            benchmarkFolder = dir;
+            benchmarkFolderLabel.setText(dir.getAbsolutePath());
+        }
+    }
+
+    @FXML
+    private void handleStartBenchmark() {
+        if (benchmarkFolder == null || !benchmarkFolder.exists()) {
+            new Alert(Alert.AlertType.WARNING, "Сначала укажите папку с тестовыми файлами!").showAndWait();
+            return;
+        }
+
+        File[] files = benchmarkFolder.listFiles(f -> f.isFile() && !f.getName().startsWith("."));
+        if (files == null || files.length == 0) {
+            new Alert(Alert.AlertType.WARNING, "В выбранной папке нет подходящих файлов!").showAndWait();
+            return;
+        }
+
+        List<String> models = ollamaClient.getAvailableModels();
+        if (models.isEmpty()) {
+            new Alert(Alert.AlertType.WARNING, "В Ollama не найдено активных моделей!").showAndWait();
+            return;
+        }
+
+        startBenchmarkButton.setDisable(true);
+        benchmarkTable.getItems().clear();
+
+        Task<List<BenchmarkResult>> task = new Task<>() {
+            @Override
+            protected List<BenchmarkResult> call() {
+                return benchmarkService.runBenchmark(List.of(files), models, System.out::println);
+            }
+        };
+
+        task.setOnSucceeded(e -> {
+            startBenchmarkButton.setDisable(false);
+            benchmarkTable.setItems(FXCollections.observableArrayList(task.getValue()));
+        });
+
+        task.setOnFailed(e -> {
+            startBenchmarkButton.setDisable(false);
+            new Alert(Alert.AlertType.ERROR, "Ошибка выполнения бенчмарка: " + task.getException().getMessage()).showAndWait();
+        });
+
+        Thread thread = new Thread(task);
+        thread.setDaemon(true);
+        thread.start();
     }
 
     @FXML
@@ -408,9 +533,7 @@ public class MainController {
             if (sendGeneralChatPromptButton != null) sendGeneralChatPromptButton.setDisable(false);
             String response = chatTask.getValue();
 
-            String historyContent = "[Модель: " + selectedModel + "]\n" + response;
-            generalChatHistory.add(new ChatMessage("assistant", historyContent));
-
+            generalChatHistory.add(new ChatMessage("assistant", response));
             appendGeneralChatMessage("ИИ (" + selectedModel + ")", response);
         });
 
@@ -452,8 +575,8 @@ public class MainController {
         File folder = directoryChooser.showDialog(stage);
 
         if (folder != null && folder.exists()) {
-            this.selectedProjectFolder = folder;
             selectAllCheckBox.setSelected(true);
+            lastScanResult = null;
             buildFileTree(folder);
             scanButton.setDisable(false);
             appendMessageToChatHtml("Система", "📁 Загружен проект: `" + folder.getName() + "`.");
@@ -461,8 +584,9 @@ public class MainController {
     }
 
     private void handleClearProjectClick() {
-        selectedProjectFolder = null;
         scannedFiles.clear();
+        lastScanResult = null;
+        lastScanModel = null;
         fileTreeView.setRoot(null);
         vulnerabilitiesTable.getItems().clear();
         scanButton.setDisable(true);
@@ -487,7 +611,15 @@ public class MainController {
             File[] files = file.listFiles();
             if (files != null) {
                 for (File child : files) {
-                    if (!child.getName().startsWith(".") && !child.getName().equalsIgnoreCase("target") && !child.getName().equalsIgnoreCase("build")) {
+                    String name = child.getName().toLowerCase();
+
+                    // Фильтруем служебные директории и бинарные классы
+                    if (!name.startsWith(".")
+                            && !name.equalsIgnoreCase("target")
+                            && !name.equalsIgnoreCase("build")
+                            && !name.equalsIgnoreCase("out")
+                            && !name.equalsIgnoreCase("bin")
+                            && !name.endsWith(".class")) {
                         item.getChildren().add(createTreeItem(child));
                     }
                 }
@@ -497,68 +629,91 @@ public class MainController {
     }
 
     private void handleStartScanClick() {
-        if (fileTreeView.getRoot() == null) return;
-
-        List<File> selectedFiles = new ArrayList<>();
-        collectSelectedFiles((CheckBoxTreeItem<File>) fileTreeView.getRoot(), selectedFiles);
-
-        if (selectedFiles.isEmpty()) {
-            Alert alert = new Alert(Alert.AlertType.WARNING, "Вы не выбрали ни одного файла!");
-            alert.showAndWait();
+        if (fileTreeView == null || fileTreeView.getRoot() == null) return;
+        File projectFolder = fileTreeView.getRoot().getValue();
+        if (projectFolder == null || !projectFolder.isDirectory()) {
+            new Alert(Alert.AlertType.WARNING, "Сначала выберите папку проекта.").showAndWait();
             return;
         }
 
+        List<File> selectedFiles = new ArrayList<>();
+        collectSelectedFiles((CheckBoxTreeItem<File>) fileTreeView.getRoot(), selectedFiles);
+        if (selectedFiles.isEmpty()) {
+            new Alert(Alert.AlertType.WARNING, "Вы не выбрали ни одного файла!").showAndWait();
+            return;
+        }
+        String targetModel = getSelectedScanModel();
         scannedFiles.clear();
+        lastScanModel = targetModel;
+        lastScanResult = null;
         vulnerabilitiesTable.getItems().clear();
         resetChatHtml();
-
         scanButton.setDisable(true);
         selectFolderButton.setDisable(true);
-        scanButton.setText("Идет анализ (" + selectedFiles.size() + " файлов)...");
+        if (clearButton != null) clearButton.setDisable(true);
+        if (importSemgrepButton != null) importSemgrepButton.setDisable(true);
+        scanButton.setText("LLM + Semgrep: идёт анализ...");
+        appendMessageToChatHtml("Система", "🔍 **Запущены Semgrep и LLM.** Модель: `"
+                + targetModel + "`. Исходный код не запускается; Semgrep работает в отдельном процессе.");
 
-        Task<Void> scanTask = new Task<>() {
+        Task<UnifiedScanService.ScanResult> task = new Task<>() {
             @Override
-            protected Void call() throws Exception {
-                for (File file : selectedFiles) {
-                    try {
-                        SourceFile sourceFile = fileAnalyzer.analyzeFile(file);
-                        List<String> chunks = codeParser.splitIntoChunks(sourceFile);
-                        List<Vulnerability> allFileVulns = new ArrayList<>();
-
-                        for (String chunk : chunks) {
-                            List<Vulnerability> chunkVulns = ollamaClient.analyzeCodeChunk(chunk);
-                            allFileVulns.addAll(chunkVulns);
-                        }
-
-                        sourceFile.setVulnerabilities(allFileVulns);
-                        Platform.runLater(() -> scannedFiles.add(sourceFile));
-
-                    } catch (IOException e) {
-                        System.err.println("Ошибка при анализе файла " + file.getName() + ": " + e.getMessage());
-                    }
-                }
-                return null;
+            protected UnifiedScanService.ScanResult call() throws Exception {
+                return unifiedScanService.scan(projectFolder.toPath(), selectedFiles, targetModel);
             }
         };
-
-        scanTask.setOnSucceeded(e -> {
-            scanButton.setDisable(false);
-            selectFolderButton.setDisable(false);
-            scanButton.setText("🚀 Запустить анализ выбранных");
+        task.setOnSucceeded(e -> {
+            finishUnifiedScan();
+            UnifiedScanService.ScanResult result = task.getValue();
+            lastScanResult = result;
+            scannedFiles.setAll(result.files());
             fileTreeView.refresh();
-            appendMessageToChatHtml("Система", "✅ **Анализ завершен!** Просканировано файлов: " + scannedFiles.size());
+            TreeItem<File> selection = fileTreeView.getSelectionModel().getSelectedItem();
+            if (selection != null && selection.getValue() != null && selection.getValue().isFile()) {
+                scannedFiles.stream().filter(sf -> sf.getPath() != null
+                        && sf.getPath().toAbsolutePath().normalize().equals(
+                                selection.getValue().toPath().toAbsolutePath().normalize()))
+                        .findFirst().ifPresent(this::showVulnerabilitiesForFile);
+            }
+            String status = result.sastCompleted() && result.failedByLlm() == 0 && result.partialByLlm() == 0
+                    && result.diagnostics().isEmpty() ? "✅ Проверка завершена" : "⚠️ Проверка завершена с ограничениями";
+            StringBuilder summary = new StringBuilder(status)
+                    .append(". Файлов загружено: ").append(result.files().size())
+                    .append(". LLM успешно проверила: ").append(result.analyzedByLlm())
+                    .append(", неполных LLM: ").append(result.partialByLlm())
+                    .append(", ошибок LLM: ").append(result.failedByLlm())
+                    .append(". Semgrep: ").append(result.sastCompleted()
+                            ? result.sastFindings() + " срабатываний" : "не выполнен")
+                    .append(". ИИ-ревью SAST: ").append(result.aiReviewed())
+                    .append(" оценено, ").append(result.aiReviewFailed()).append(" ошибок, ")
+                    .append(result.aiReviewSkipped()).append(" пропущено")
+                    .append(". Возможных совпадений строк: ").append(result.possibleOverlaps())
+                    .append(". Пропущено файлов: ").append(result.skippedTargets())
+                    .append(". Несопоставленных SAST-находок: ").append(result.unrelatedFindings())
+                    .append(".\n\n**Важно:** совпадение строк не подтверждает уязвимость; отсутствие находок не гарантирует безопасность.");
+            for (String diagnostic : result.diagnostics()) {
+                summary.append("\n\n⚠️ ").append(escapeHtml(diagnostic));
+            }
+            appendMessageToChatHtml("Система", summary.toString());
         });
-
-        scanTask.setOnFailed(e -> {
-            scanButton.setDisable(false);
-            selectFolderButton.setDisable(false);
-            scanButton.setText("🚀 Запустить анализ выбранных");
-            appendMessageToChatHtml("Система", "❌ **Ошибка во время анализа.**");
+        task.setOnFailed(e -> {
+            finishUnifiedScan();
+            Throwable error = task.getException();
+            appendMessageToChatHtml("Система", "❌ **Ошибка анализа:** "
+                    + (error == null ? "неизвестная ошибка" : escapeHtml(error.getMessage()))
+                    + "\n\nРезультат нельзя интерпретировать как отсутствие уязвимостей.");
         });
-
-        Thread thread = new Thread(scanTask);
+        Thread thread = new Thread(task, "unified-security-scan");
         thread.setDaemon(true);
         thread.start();
+    }
+
+    private void finishUnifiedScan() {
+        scanButton.setDisable(false);
+        selectFolderButton.setDisable(false);
+        if (clearButton != null) clearButton.setDisable(false);
+        if (importSemgrepButton != null) importSemgrepButton.setDisable(false);
+        scanButton.setText("🚀 Запустить анализ выбранных");
     }
 
     private void collectSelectedFiles(CheckBoxTreeItem<File> item, List<File> result) {
@@ -581,11 +736,192 @@ public class MainController {
     private void showVulnerabilityDetails(Vulnerability vulnerability) {
         resetChatHtml();
         String markdownReport = String.format(
-                "### ⚠️ %s\n\n**Критичность:** `%s`  \n**Диапазон строк:** `%s`\n\n#### Описание:\n%s\n\n#### Рекомендация:\n%s",
-                vulnerability.getTitle(), vulnerability.getSeverity(), vulnerability.getLineRange(),
-                vulnerability.getDescription(), vulnerability.getRecommendation()
+                "### ⚠️ %s\n\n**Критичность:** `%s`  \n**Строки:** `%s`  \n**Статус:** %s\n\n**Пояснение:** %s\n\n**ИИ-ревью:** %s\n\n**Обоснование ИИ:** %s\n\n#### Описание:\n%s\n\n#### Рекомендация:\n%s",
+                escapeHtml(vulnerability.getTitle()), escapeHtml(vulnerability.getSeverity()),
+                escapeHtml(vulnerability.getLineRange()),
+                escapeHtml(vulnerability.getValidationStatusLabel()),
+                escapeHtml(vulnerability.getValidationNote()),
+                escapeHtml(vulnerability.getAiReviewStatusLabel()),
+                escapeHtml(vulnerability.getAiReviewNote()),
+                escapeHtml(vulnerability.getDescription()), escapeHtml(vulnerability.getRecommendation())
         );
+        if (vulnerability.getCwe() != null) {
+            markdownReport += "\n\n**CWE:** `" + escapeHtml(vulnerability.getCwe()) + "`";
+        }
+        if (vulnerability.getCweAdvisorStatus() != null
+                && !"NOT_ASSESSED".equals(vulnerability.getCweAdvisorStatus())) {
+            markdownReport += "\n\n**Оценка CWE по коду:** `" + escapeHtml(vulnerability.getCweAdvisorStatus()) + "`";
+            if (vulnerability.getCweSuggestion() != null) {
+                markdownReport += "\n\n**Предлагаемая категория (не диагноз):** `"
+                        + escapeHtml(vulnerability.getCweSuggestion()) + "`";
+            }
+            if (vulnerability.getCweAdvisorNote() != null) {
+                markdownReport += "\n\n" + escapeHtml(vulnerability.getCweAdvisorNote());
+            }
+        }
+        if (vulnerability.getSemanticStatus() != null
+                && !"NOT_ASSESSED".equals(vulnerability.getSemanticStatus())) {
+            markdownReport += "\n\n**Проверка CWE:** `" + escapeHtml(vulnerability.getSemanticStatus()) + "`";
+            if (vulnerability.getSemanticNote() != null) {
+                markdownReport += "\n\n" + escapeHtml(vulnerability.getSemanticNote());
+            }
+        }
+        if (vulnerability.getMechanismStatus() != null
+                && !"NOT_ASSESSED".equals(vulnerability.getMechanismStatus())) {
+            markdownReport += "\n\n**Проверка механизма:** `" + escapeHtml(vulnerability.getMechanismStatus()) + "`";
+            if (vulnerability.getMechanismNote() != null) {
+                markdownReport += "\n\n" + escapeHtml(vulnerability.getMechanismNote());
+            }
+        }
+        if (vulnerability.getEvidence() != null) {
+            markdownReport += "\n\n**Цитата исходного кода (LLM):** `"
+                    + escapeHtml(vulnerability.getEvidence().replace("`", "'")) + "`";
+        }
+        if (vulnerability.getModelOutputStatus() != null
+                && !"NOT_ASSESSED".equals(vulnerability.getModelOutputStatus())) {
+            markdownReport += "\n\n**Качество ответа LLM:** `"
+                    + escapeHtml(vulnerability.getModelOutputStatus()) + "`";
+            if (vulnerability.getModelOutputNote() != null) {
+                markdownReport += "\n\n" + escapeHtml(vulnerability.getModelOutputNote());
+            }
+        }
+        if (vulnerability.getSourceExcerpt() != null) {
+            markdownReport += "\n\n**Исходная строка (для ручной сверки, не доказательство):** `"
+                    + escapeHtml(vulnerability.getSourceExcerpt().replace("`", "'")) + "`";
+        }
         appendMessageToChatHtml("ИИ-Анализатор", markdownReport);
+    }
+
+    /**
+     * Imports a previously generated Semgrep JSON report for the selected project.
+     * Import is deliberately read-only: it never invokes external code or applies fixes.
+     */
+    private void handleImportSemgrepClick() {
+        if (fileTreeView == null || fileTreeView.getRoot() == null) {
+            new Alert(Alert.AlertType.WARNING, "Сначала выберите папку проекта.").showAndWait();
+            return;
+        }
+        File projectFolder = fileTreeView.getRoot().getValue();
+        if (projectFolder == null || !projectFolder.isDirectory()) {
+            new Alert(Alert.AlertType.WARNING, "Сначала выберите папку проекта.").showAndWait();
+            return;
+        }
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Открыть JSON-отчёт Semgrep");
+        chooser.getExtensionFilters().add(
+                new FileChooser.ExtensionFilter("JSON files (*.json)", "*.json"));
+        File preferred = new File(projectFolder, "semgrep-results.json");
+        if (preferred.isFile()) chooser.setInitialFileName(preferred.getName());
+        File file = chooser.showOpenDialog((Stage) importSemgrepButton.getScene().getWindow());
+        if (file == null) return;
+
+        final SemgrepReportService.Report report;
+        try {
+            report = semgrepReportService.read(file.toPath());
+        } catch (IOException ex) {
+            new Alert(Alert.AlertType.ERROR, "Не удалось прочитать Semgrep JSON: " + ex.getMessage()).showAndWait();
+            return;
+        }
+        // Validate all source paths before updating the UI, to avoid half-imports.
+        record Entry(Path file, SemgrepReportService.Finding finding) { }
+        List<Entry> entries = new ArrayList<>();
+        int missing = 0;
+        for (var finding : report.findings()) {
+            try {
+                entries.add(new Entry(
+                        semgrepReportService.resolveInProject(projectFolder.toPath(), finding.path()), finding));
+            } catch (IOException ex) {
+                missing++;
+            }
+        }
+        // Replace previous Semgrep findings. Any old LLM/SAST overlap label
+        // is invalid once the SAST report changes.
+        lastScanResult = null;
+        lastScanModel = null;
+        for (SourceFile sf : scannedFiles) {
+            sf.getVulnerabilities().removeIf(v -> "SAST_REPORTED".equals(v.getValidationStatus()));
+            for (Vulnerability v : sf.getVulnerabilities()) {
+                if ("POSSIBLE_SAST_MATCH".equals(v.getValidationStatus())) {
+                    v.setValidationStatus("LOCATION_CHECKED");
+                    v.setValidationNote("Импортирован новый отчёт Semgrep; старое совпадение сброшено. "
+                            + "Проверка координат LLM не подтверждает уязвимость.");
+                }
+            }
+        }
+        int imported = 0;
+        for (Entry entry : entries) {
+            try {
+                SourceFile sf = scannedFiles.stream()
+                        .filter(existing -> existing.getPath() != null
+                                && existing.getPath().toAbsolutePath().normalize().equals(entry.file()))
+                        .findFirst().orElse(null);
+                if (sf == null) {
+                    String content = Files.readString(entry.file());
+                    sf = new SourceFile(entry.file().getFileName().toString(), entry.file(),
+                            projectFolder.toPath().toRealPath().relativize(entry.file()).toString(),
+                            content.lines().count(), content);
+                    scannedFiles.add(sf);
+                }
+                sf.getVulnerabilities().add(semgrepReportService.toVulnerability(entry.finding()));
+                imported++;
+            } catch (IOException ex) {
+                missing++;
+            }
+        }
+        fileTreeView.refresh();
+        TreeItem<File> selected = fileTreeView.getSelectionModel().getSelectedItem();
+        if (selected != null && selected.getValue() != null && selected.getValue().isFile()) {
+            File selectedFile = selected.getValue();
+            scannedFiles.stream().filter(sf -> sf.getPath() != null
+                    && sf.getPath().toAbsolutePath().normalize().equals(selectedFile.toPath().toAbsolutePath().normalize()))
+                    .findFirst().ifPresent(this::showVulnerabilitiesForFile);
+        }
+        String summary = "Semgrep: в отчёте " + report.findings().size() + " срабатываний, "
+                + "импортировано " + imported + ", не сопоставлено с проектом " + missing
+                + ", диагностических ошибок " + report.errors().size() + ".";
+        appendMessageToChatHtml("Система", summary + "\n\n**Внимание:** Семгреп-находки не подтверждают "
+                + "эксплуатируемость; ноль находок не гарантирует отсутствие уязвимостей.");
+        if (missing > 0 || report.hasErrors()) {
+            new Alert(Alert.AlertType.WARNING, summary + "\nПроверьте полноту отчёта и пути к файлам.").showAndWait();
+        } else {
+            new Alert(Alert.AlertType.INFORMATION, summary).showAndWait();
+        }
+    }
+
+    private static String escapeHtml(String value) {
+        if (value == null) return "";
+        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    private void handleExportResultsClick() {
+        if (scannedFiles.isEmpty()) {
+            new Alert(Alert.AlertType.WARNING, "Сначала просканируйте проект или импортируйте отчёт.").showAndWait();
+            return;
+        }
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Экспорт необработанных результатов (возможны фрагменты секретов)");
+        FileChooser.ExtensionFilter json = new FileChooser.ExtensionFilter("JSON (*.json)", "*.json");
+        FileChooser.ExtensionFilter csv = new FileChooser.ExtensionFilter("CSV (*.csv)", "*.csv");
+        chooser.getExtensionFilters().addAll(json, csv);
+        chooser.setSelectedExtensionFilter(json);
+        chooser.setInitialFileName("security-findings");
+        File selected = chooser.showSaveDialog((Stage) exportResultsButton.getScene().getWindow());
+        if (selected == null) return;
+        String name = selected.getName().toLowerCase(java.util.Locale.ROOT);
+        boolean asCsv = name.endsWith(".csv") || (!name.endsWith(".json")
+                && chooser.getSelectedExtensionFilter() == csv);
+        Path destination = selected.toPath();
+        if (!name.endsWith(".csv") && !name.endsWith(".json")) {
+            destination = destination.resolveSibling(selected.getName() + (asCsv ? ".csv" : ".json"));
+        }
+        try {
+            if (asCsv) scanExportService.writeCsv(destination, List.copyOf(scannedFiles), lastScanResult);
+            else scanExportService.writeJson(destination, List.copyOf(scannedFiles), lastScanResult, lastScanModel);
+            new Alert(Alert.AlertType.INFORMATION, "Экспорт сохранён. Не публикуйте файл без проверки секретов.")
+                    .showAndWait();
+        } catch (IOException ex) {
+            new Alert(Alert.AlertType.ERROR, "Ошибка экспорта: " + ex.getMessage()).showAndWait();
+        }
     }
 
     private void handleExportPdfClick() {
@@ -605,7 +941,15 @@ public class MainController {
 
         if (saveFile != null) {
             try {
-                pdfReportService.generatePdfReport(scannedFiles, saveFile.getAbsolutePath());
+                String coverage = lastScanResult == null ?
+                        "Состояние автоматической проверки неизвестно (возможен ручной импорт)." :
+                        "LLM: " + lastScanResult.analyzedByLlm() + " файлов успешно, "
+                        + lastScanResult.failedByLlm() + " ошибок, "
+                        + lastScanResult.partialByLlm() + " неполных; Semgrep: "
+                        + (lastScanResult.sastCompleted() ? "запущен" : "не выполнен")
+                        + "; пропущено файлов: " + lastScanResult.skippedTargets()
+                        + "; диагностик: " + lastScanResult.diagnostics().size() + ".";
+                pdfReportService.generatePdfReport(scannedFiles, saveFile.getAbsolutePath(), coverage);
                 Alert alert = new Alert(Alert.AlertType.INFORMATION, "PDF-отчет успешно сохранен!");
                 alert.showAndWait();
             } catch (Exception e) {
@@ -624,7 +968,7 @@ public class MainController {
         dialog.getDialogPane().getButtonTypes().addAll(analyzeButtonType, ButtonType.CANCEL);
 
         TextArea textArea = new TextArea();
-        textArea.setPromptText("Вставьте ваш Java/Spring код сюда...");
+        textArea.setPromptText("Вставьте фрагмент кода (C, C++, Java, Python, Go)...");
         textArea.setPrefRowCount(15);
         textArea.setPrefColumnCount(60);
         textArea.setWrapText(true);
@@ -642,16 +986,17 @@ public class MainController {
         dialog.showAndWait().ifPresent(codeContent -> {
             if (codeContent == null || codeContent.trim().isEmpty()) return;
 
-            String snippetName = "Snippet_" + System.currentTimeMillis() + ".java";
-            SourceFile virtualFile = new SourceFile(snippetName, null, "java", codeContent.getBytes().length, codeContent);
+            String targetModel = getSelectedScanModel();
+            String snippetName = "Snippet_" + System.currentTimeMillis();
+            SourceFile virtualFile = new SourceFile(snippetName, null, "Unknown", codeContent.getBytes().length, codeContent);
 
             pasteCodeButton.setDisable(true);
-            appendMessageToChatHtml("Система", "⏳ *Выполняется экспресс-анализ вставленного фрагмента кода...*");
+            appendMessageToChatHtml("Система", "⏳ *Выполняется экспресс-анализ моделью `" + targetModel + "`...*");
 
             Task<List<Vulnerability>> analyzeTask = new Task<>() {
                 @Override
                 protected List<Vulnerability> call() throws Exception {
-                    return ollamaClient.analyzeCodeChunk(codeContent);
+                    return securityScannerAgent.scanChunk(codeContent, "Unknown", targetModel);
                 }
             };
 
@@ -662,15 +1007,15 @@ public class MainController {
                 scannedFiles.add(virtualFile);
 
                 if (vulnerabilities.isEmpty()) {
-                    appendMessageToChatHtml("ИИ-Консультант", "✅ **Уязвимости во вставленном фрагменте кода не обнаружены!**");
+                    appendMessageToChatHtml("ИИ-Консультант (" + targetModel + ")", "✅ **Уязвимости во фрагменте кода не обнаружены!**");
                 } else {
-                    appendMessageToChatHtml("ИИ-Консультант", "⚠️ **Анализ завершен!** Обнаружено уязвимостей: **" + vulnerabilities.size() + "**.");
+                    appendMessageToChatHtml("ИИ-Консультант (" + targetModel + ")", "⚠️ **Анализ завершен!** Обнаружено уязвимостей: **" + vulnerabilities.size() + "**.");
                 }
             });
 
             analyzeTask.setOnFailed(e -> {
                 pasteCodeButton.setDisable(false);
-                appendMessageToChatHtml("Система", "❌ **Ошибка во время анализа фрагмента кода.**");
+                appendMessageToChatHtml("Система", "❌ **Ошибка во время анализа фрагмента кода:** " + analyzeTask.getException().getMessage());
             });
 
             Thread thread = new Thread(analyzeTask);
@@ -699,6 +1044,7 @@ public class MainController {
 
         if (selectedSourceFile == null) return;
 
+        String targetModel = getSelectedScanModel();
         appendMessageToChatHtml("Вы", question);
         promptInputField.clear();
         sendPromptButton.setDisable(true);
@@ -712,7 +1058,7 @@ public class MainController {
 
         chatTask.setOnSucceeded(e -> {
             sendPromptButton.setDisable(false);
-            appendMessageToChatHtml("ИИ-Консультант", chatTask.getValue());
+            appendMessageToChatHtml("ИИ-Консультант (" + targetModel + ")", chatTask.getValue());
         });
 
         chatTask.setOnFailed(e -> {
@@ -744,8 +1090,9 @@ public class MainController {
             return;
         }
 
+        String targetModel = getSelectedScanModel();
         fixCurrentFileButton.setDisable(true);
-        appendMessageToChatHtml("Система", "⏳ *ИИ формирует исправленный вариант файла " + selectedFile.getName() + "...*");
+        appendMessageToChatHtml("Система", "⏳ *Модель `" + targetModel + "` формирует исправленный вариант файла " + selectedFile.getName() + "...*");
 
         Task<String> fixTask = new Task<>() {
             @Override
@@ -759,7 +1106,7 @@ public class MainController {
                 String fixedCode = fixTask.getValue();
                 fixCurrentFileButton.setDisable(false);
                 String createdFileName = fileFixService.saveFixedVersionAsTxt(selectedFile, fixedCode);
-                appendMessageToChatHtml("ИИ-Консультант", "✅ **Исправленный вариант сохранен в файл:** `" + createdFileName + "`\n\n```java\n" + fixedCode + "\n```");
+                appendMessageToChatHtml("ИИ-Консультант (" + targetModel + ")", "✅ **Исправленный вариант сохранен в файл:** `" + createdFileName + "`\n\n```\n" + fixedCode + "\n```");
             } catch (Exception ex) {
                 fixCurrentFileButton.setDisable(false);
                 appendMessageToChatHtml("Система", "❌ **Ошибка сохранения файла:** " + ex.getMessage());
@@ -768,7 +1115,7 @@ public class MainController {
 
         fixTask.setOnFailed(e -> {
             fixCurrentFileButton.setDisable(false);
-            appendMessageToChatHtml("Система", "❌ **Ошибка генерации исправления ИИ.**");
+            appendMessageToChatHtml("Система", "❌ **Ошибка генерации исправления ИИ:** " + fixTask.getException().getMessage());
         });
 
         Thread thread = new Thread(fixTask);
@@ -777,31 +1124,28 @@ public class MainController {
     }
 
     private void handleFixAllClick() {
-        List<SourceFile> problematicFiles = scannedFiles.stream()
-                .filter(f -> !f.getVulnerabilities().isEmpty() && f.getAbsolutePath() != null)
-                .toList();
-
-        if (problematicFiles.isEmpty()) {
-            Alert alert = new Alert(Alert.AlertType.INFORMATION, "Нет просканированных файлов с уязвимостями!");
+        if (scannedFiles.isEmpty()) {
+            Alert alert = new Alert(Alert.AlertType.WARNING, "Сначала просканируйте проект!");
             alert.showAndWait();
             return;
         }
 
+        String targetModel = getSelectedScanModel();
         fixAllButton.setDisable(true);
+        appendMessageToChatHtml("Система", "⏳ *Запущена пакетная генерация исправлений моделью `" + targetModel + "`...*");
 
         Task<Void> fixAllTask = new Task<>() {
             @Override
             protected Void call() throws Exception {
-                int total = problematicFiles.size();
-                for (int i = 0; i < total; i++) {
-                    SourceFile file = problematicFiles.get(i);
-                    int currentNum = i + 1;
-                    Platform.runLater(() -> fixAllButton.setText("Исправление (" + currentNum + "/" + total + ")..."));
-                    try {
-                        String fixedCode = ollamaClient.fixSourceFile(file);
-                        fileFixService.saveFixedVersionAsTxt(file, fixedCode);
-                    } catch (Exception e) {
-                        System.err.println("Ошибка генерации для " + file.getName() + ": " + e.getMessage());
+                for (SourceFile sf : scannedFiles) {
+                    if (sf.getVulnerabilities() != null && !sf.getVulnerabilities().isEmpty()) {
+                        try {
+                            String fixedCode = ollamaClient.fixSourceFile(sf);
+                            String savedPath = fileFixService.saveFixedVersionAsTxt(sf, fixedCode);
+                            Platform.runLater(() -> appendMessageToChatHtml("Система", "✅ Исправлен (" + targetModel + "): `" + sf.getName() + "` -> `" + savedPath + "`"));
+                        } catch (Exception ex) {
+                            Platform.runLater(() -> appendMessageToChatHtml("Система", "❌ Ошибка при исправлении `" + sf.getName() + "`: " + ex.getMessage()));
+                        }
                     }
                 }
                 return null;
@@ -810,14 +1154,12 @@ public class MainController {
 
         fixAllTask.setOnSucceeded(e -> {
             fixAllButton.setDisable(false);
-            fixAllButton.setText("⚡ Исправить весь проект");
-            Alert alert = new Alert(Alert.AlertType.INFORMATION, "Исправленные варианты (.txt) успешно созданы!");
-            alert.showAndWait();
+            appendMessageToChatHtml("Система", "🎉 **Пакетное исправление успешно завершено!**");
         });
 
         fixAllTask.setOnFailed(e -> {
             fixAllButton.setDisable(false);
-            fixAllButton.setText("⚡ Исправить весь проект");
+            appendMessageToChatHtml("Система", "❌ **Ошибка при пакетном исправлении файлов:** " + fixAllTask.getException().getMessage());
         });
 
         Thread thread = new Thread(fixAllTask);
@@ -826,74 +1168,79 @@ public class MainController {
     }
 
     // ==========================================
-    // ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ И РЕНДЕРИНГ WEBVIEW
+    // ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ HTML И WEBVIEW
     // ==========================================
-
-    private String getBaseCss() {
-        return "<style>"
-                + "body { font-family: 'Segoe UI', Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 10px; padding: 0; }"
-                + ".msg-card { background: #ffffff; border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }"
-                + ".sender { font-weight: bold; font-size: 12px; color: #34495e; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }"
-                + "p { margin: 4px 0; color: #2c3e50; font-size: 13px; line-height: 1.5; }"
-                + "code { background: #eef2f7; color: #c0392b; padding: 2px 5px; border-radius: 4px; font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; }"
-                + "pre { background: #1e1e1e; color: #d4d4d4; padding: 10px; border-radius: 6px; overflow-x: auto; font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; }"
-                + "pre code { background: none; color: #d4d4d4; padding: 0; }"
-                + "h3 { color: #c0392b; margin-top: 0; font-size: 15px; }"
-                + "h4 { color: #2c3e50; margin: 8px 0 4px 0; font-size: 13px; }"
-                + "</style>";
-    }
-
-    private void renderHtml(WebView webView, StringBuilder htmlContent) {
-        if (webView != null) {
-            String fullHtml = htmlContent.toString() + "</body></html>";
-            webView.getEngine().loadContent(fullHtml);
-        }
-    }
 
     private void resetChatHtml() {
         chatHistoryHtml.setLength(0);
-        chatHistoryHtml.append("<!DOCTYPE html><html><head>").append(getBaseCss()).append("</head><body>");
-        renderHtml(chatWebView, chatHistoryHtml);
+        chatHistoryHtml.append("<html><head><style>")
+                .append("body { font-family: 'Segoe UI', sans-serif; margin: 10px; background-color: #f8f9fa; color: #333; }")
+                .append("h3 { color: #2c3e50; }")
+                .append("pre { background: #272822; color: #f8f8f2; padding: 10px; border-radius: 5px; overflow-x: auto; }")
+                .append("code { background: #eef; padding: 2px 4px; border-radius: 3px; font-family: Consolas, monospace; }")
+                .append(".msg { margin-bottom: 12px; padding: 8px 12px; border-radius: 6px; }")
+                .append(".user { background: #e3f2fd; border-left: 4px solid #2196f3; }")
+                .append(".ai { background: #ffffff; border-left: 4px solid #4caf50; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }")
+                .append(".system { background: #fff3e0; border-left: 4px solid #ff9800; }")
+                .append("</style></head><body>");
+        updateWebView(chatWebView, chatHistoryHtml);
     }
 
     private void resetGeneralChatHtml() {
         generalChatHtml.setLength(0);
-        generalChatHtml.append("<!DOCTYPE html><html><head>").append(getBaseCss()).append("</head><body>");
-        renderHtml(generalChatWebView, generalChatHtml);
+        generalChatHtml.append("<html><head><style>")
+                .append("body { font-family: 'Segoe UI', sans-serif; margin: 10px; background-color: #f8f9fa; color: #333; }")
+                .append("pre { background: #272822; color: #f8f8f2; padding: 10px; border-radius: 5px; overflow-x: auto; }")
+                .append("code { background: #eef; padding: 2px 4px; border-radius: 3px; font-family: Consolas, monospace; }")
+                .append(".msg { margin-bottom: 12px; padding: 8px 12px; border-radius: 6px; }")
+                .append(".user { background: #e3f2fd; border-left: 4px solid #2196f3; }")
+                .append(".ai { background: #ffffff; border-left: 4px solid #4caf50; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }")
+                .append(".system { background: #fff3e0; border-left: 4px solid #ff9800; }")
+                .append("</style></head><body>");
+        updateWebView(generalChatWebView, generalChatHtml);
     }
 
     private void resetAgentLogHtml() {
         agentLogHtml.setLength(0);
-        agentLogHtml.append("<!DOCTYPE html><html><head>").append(getBaseCss()).append("</head><body>");
-        renderHtml(agentLogWebView, agentLogHtml);
+        agentLogHtml.append("<html><head><style>")
+                .append("body { font-family: 'Consolas', 'Courier New', monospace; margin: 10px; background-color: #1e1e1e; color: #d4d4d4; font-size: 13px; }")
+                .append("pre { background: #2d2d2d; color: #9cdcfe; padding: 10px; border-radius: 5px; overflow-x: auto; }")
+                .append("code { color: #ce9178; }")
+                .append(".log { margin-bottom: 6px; line-height: 1.4; }")
+                .append("</style></head><body>");
+        updateWebView(agentLogWebView, agentLogHtml);
     }
 
-    private void appendMessageToChatHtml(String sender, String markdownMessage) {
-        if (chatWebView == null) return;
-        String htmlContent = htmlRenderer.render(markdownParser.parse(markdownMessage));
-        chatHistoryHtml.append("<div class='msg-card'><div class='sender'>")
-                .append(sender)
-                .append("</div>")
+    private void appendMessageToChatHtml(String sender, String markdownText) {
+        String cssClass = sender.equals("Вы") ? "user" : (sender.equals("Система") ? "system" : "ai");
+        String htmlContent = htmlRenderer.render(markdownParser.parse(markdownText));
+        chatHistoryHtml.append("<div class='msg ").append(cssClass).append("'>")
+                .append("<strong>").append(sender).append(":</strong><br/>")
                 .append(htmlContent)
                 .append("</div>");
-        renderHtml(chatWebView, chatHistoryHtml);
+        updateWebView(chatWebView, chatHistoryHtml);
     }
 
-    private void appendGeneralChatMessage(String sender, String markdownMessage) {
-        if (generalChatWebView == null) return;
-        String htmlContent = htmlRenderer.render(markdownParser.parse(markdownMessage));
-        generalChatHtml.append("<div class='msg-card'><div class='sender'>")
-                .append(sender)
-                .append("</div>")
+    private void appendGeneralChatMessage(String sender, String markdownText) {
+        String cssClass = sender.equals("Вы") ? "user" : (sender.equals("Система") ? "system" : "ai");
+        String htmlContent = htmlRenderer.render(markdownParser.parse(markdownText));
+        generalChatHtml.append("<div class='msg ").append(cssClass).append("'>")
+                .append("<strong>").append(sender).append(":</strong><br/>")
                 .append(htmlContent)
                 .append("</div>");
-        renderHtml(generalChatWebView, generalChatHtml);
+        updateWebView(generalChatWebView, generalChatHtml);
     }
 
-    private void appendAgentLog(String markdownMessage) {
-        if (agentLogWebView == null) return;
-        String htmlContent = htmlRenderer.render(markdownParser.parse(markdownMessage));
-        agentLogHtml.append("<div class='msg-card'>").append(htmlContent).append("</div>");
-        renderHtml(agentLogWebView, agentLogHtml);
+    private void appendAgentLog(String markdownLog) {
+        String htmlContent = htmlRenderer.render(markdownParser.parse(markdownLog));
+        agentLogHtml.append("<div class='log'>").append(htmlContent).append("</div>");
+        updateWebView(agentLogWebView, agentLogHtml);
+    }
+
+    private void updateWebView(WebView webView, StringBuilder htmlBuffer) {
+        if (webView != null) {
+            String content = htmlBuffer.toString() + "</body></html>";
+            Platform.runLater(() -> webView.getEngine().loadContent(content));
+        }
     }
 }

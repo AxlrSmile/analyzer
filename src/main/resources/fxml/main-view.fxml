@@ -20,6 +20,7 @@
 <?import javafx.scene.text.Font?>
 <?import javafx.scene.web.WebView?>
 
+
 <VBox prefHeight="750.0" prefWidth="1100.0" spacing="10.0" style="-fx-background-color: #f4f6f9;" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.analyzer.ui.controller.MainController">
     <padding>
         <Insets bottom="10.0" left="15.0" right="15.0" top="15.0" />
@@ -72,6 +73,14 @@
                             </children>
                         </HBox>
 
+                        <HBox alignment="CENTER_LEFT" spacing="8.0">
+                            <children>
+                                <Button fx:id="importSemgrepButton" mnemonicParsing="false" text="📥 Импортировать отчёт Semgrep (JSON)" />
+                                <Button fx:id="exportResultsButton" mnemonicParsing="false" text="💾 Экспорт JSON/CSV" />
+                                <Label text="SAST-находки требуют проверки; отсутствие находок не гарантирует безопасность" textFill="#7f8c8d" />
+                            </children>
+                        </HBox>
+
                         <SplitPane dividerPositions="0.28" focusTraversable="true" VBox.vgrow="ALWAYS">
                             <items>
                                 <!-- Дерево файлов -->
@@ -116,6 +125,7 @@
                                                                 <TableColumn fx:id="titleColumn" prefWidth="220.0" text="Уязвимость" />
                                                                 <TableColumn fx:id="severityColumn" prefWidth="100.0" text="Критичность" />
                                                                 <TableColumn fx:id="linesColumn" prefWidth="80.0" text="Строки" />
+                                                                <TableColumn fx:id="validationColumn" prefWidth="150.0" text="Проверка" />
                                                             </columns>
                                                         </TableView>
                                                     </children>
@@ -262,6 +272,58 @@
                                         </font>
                                     </Label>
                                     <WebView fx:id="agentLogWebView" VBox.vgrow="ALWAYS" />
+                                </children>
+                            </VBox>
+                        </children>
+                    </VBox>
+                </content>
+            </Tab>
+
+            <!-- ВКЛАДКА 4: Сравнительный бенчмаркинг моделей -->
+            <Tab text="📊 Сравнительный бенчмарк">
+                <content>
+                    <VBox spacing="10.0">
+                        <padding>
+                            <Insets bottom="10.0" left="10.0" right="10.0" top="10.0" />
+                        </padding>
+                        <children>
+                            <!-- Панель управления бенчмарком -->
+                            <HBox alignment="CENTER_LEFT" spacing="10.0" style="-fx-background-color: #ffffff; -fx-padding: 10; -fx-background-radius: 6; -fx-border-color: #e0e0e0; -fx-border-radius: 6;">
+                                <children>
+                                    <Button fx:id="selectBenchmarkFolderButton" onAction="#handleSelectBenchmarkFolder" style="-fx-background-color: #34495e; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 4;" text="📁 Тестовая папка" />
+                                    <Label fx:id="benchmarkFolderLabel" text="Папка не выбрана" textFill="#7f8c8d">
+                                        <font>
+                                            <Font size="13.0" />
+                                        </font>
+                                    </Label>
+                                    <Region HBox.hgrow="ALWAYS" />
+                                    <Button fx:id="startBenchmarkButton" onAction="#handleStartBenchmark" style="-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 4; -fx-padding: 8 18;" text="🚀 Запустить бенчмарк" />
+                                </children>
+                            </HBox>
+
+                            <!-- Таблица с результатами -->
+                            <VBox spacing="5.0" VBox.vgrow="ALWAYS">
+                                <children>
+                                    <Label text="Сравнительные метрики моделей на тестовом наборе:" textFill="#2c3e50">
+                                        <font>
+                                            <Font name="System Bold" size="13.0" />
+                                        </font>
+                                    </Label>
+                                    <TableView fx:id="benchmarkTable" VBox.vgrow="ALWAYS">
+                                        <columns>
+                                            <TableColumn fx:id="bmModelCol" prefWidth="180.0" text="ИИ-Модель" />
+                                            <TableColumn fx:id="bmFilesCol" prefWidth="75.0" text="Файлов" />
+                                            <TableColumn fx:id="bmTpCol" prefWidth="55.0" text="TP" />
+                                            <TableColumn fx:id="bmFpCol" prefWidth="75.0" text="FP (Ложные)" />
+                                            <TableColumn fx:id="bmTnCol" prefWidth="55.0" text="TN" />
+                                            <TableColumn fx:id="bmFnCol" prefWidth="75.0" text="FN (Пропуски)" />
+                                            <TableColumn fx:id="bmPrecisionCol" prefWidth="95.0" text="Precision" />
+                                            <TableColumn fx:id="bmRecallCol" prefWidth="95.0" text="Recall" />
+                                            <TableColumn fx:id="bmF1Col" prefWidth="95.0" text="F1-Score" />
+                                            <TableColumn fx:id="bmTotalTimeCol" prefWidth="110.0" text="Время всего" />
+                                            <TableColumn fx:id="bmAvgTimeCol" prefWidth="120.0" text="Ср. время / файл" />
+                                        </columns>
+                                    </TableView>
                                 </children>
                             </VBox>
                         </children>

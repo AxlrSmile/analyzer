@@ -1,40 +1,70 @@
 package com.analyzer.domain.model;
 
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-@Data
-@NoArgsConstructor // Оставляем для фреймворков
 public class SourceFile {
+
     private String name;
-    private String absolutePath;
-    private String extension;
-    private long sizeInBytes;
+    private Path path;
+    private String relativePath;
+    private long linesOfCode;
     private String content;
-    private List<Vulnerability> vulnerabilities = new ArrayList<>(); // Инициализируется сразу
+    private List<Vulnerability> vulnerabilities = new ArrayList<>();
 
-    // Явный конструктор для анализатора (без списка уязвимостей в аргументах)
-    public SourceFile(String name, String absolutePath, String extension, long sizeInBytes, String content) {
+    public SourceFile() {
+    }
+
+    // Полный конструктор
+    public SourceFile(String name, Path path, String relativePath, long linesOfCode, String content) {
         this.name = name;
-        this.absolutePath = absolutePath;
-        this.extension = extension;
-        this.sizeInBytes = sizeInBytes;
+        this.path = path;
+        this.relativePath = relativePath;
+        this.linesOfCode = linesOfCode;
         this.content = content;
-        // vulnerabilities инициализируется как пустой ArrayList по умолчанию
     }
 
-    // Автоматический расчет строк кода на основе содержимого
-    public long getLinesOfCode() {
-        if (content == null || content.isEmpty()) {
-            return 0;
+    // Вспомогательный метод получения абсолютного пути в формате String
+    public String getAbsolutePath() {
+        if (path != null) {
+            return path.toAbsolutePath().toString();
         }
-        return content.lines().count();
+        return relativePath != null ? relativePath : name;
     }
 
-    // Возвращает путь файла
-    public String getRelativePath() {
-        return absolutePath != null ? absolutePath : name;
+    public String getExtension() {
+        if (name == null || !name.contains(".")) {
+            return "java";
+        }
+        return name.substring(name.lastIndexOf('.') + 1);
+    }
+
+    // --- ГЕТТЕРЫ И СЕТТЕРЫ ---
+
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+
+    public Path getPath() { return path; }
+    public void setPath(Path path) { this.path = path; }
+
+    public String getRelativePath() { return relativePath; }
+    public void setRelativePath(String relativePath) { this.relativePath = relativePath; }
+
+    public long getLinesOfCode() { return linesOfCode; }
+    public void setLinesOfCode(long linesOfCode) { this.linesOfCode = linesOfCode; }
+
+    public String getContent() { return content; }
+    public void setContent(String content) { this.content = content; }
+
+    public List<Vulnerability> getVulnerabilities() {
+        if (vulnerabilities == null) {
+            vulnerabilities = new ArrayList<>();
+        }
+        return vulnerabilities;
+    }
+
+    public void setVulnerabilities(List<Vulnerability> vulnerabilities) {
+        this.vulnerabilities = vulnerabilities;
     }
 }

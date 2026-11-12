@@ -1,0 +1,143 @@
+name: DevSecOps CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# No repository secrets or Ollama token are required.
+# Never use pull_request_target to execute untrusted PR code.
+permissions:
+  contents: read
+
+concurrency:
+  group: devsecops-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  java-tests:
+    name: Java 21 · Maven tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Configure JDK 21 (Temurin)
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Verify Java and Maven versions
+        run: |
+          java -version
+          chmod +x ./mvnw
+          ./mvnw --version
+
+      - name: Run project tests
+        run: ./mvnw --batch-mode --no-transfer-progress clean test
+
+      - name: Publish JUnit XML reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: java21-surefire-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/surefire-reports/*.xml
+          if-no-files-found: warn
+          retention-days: 7
+
+  semgrep:
+    name: Semgrep · production Java
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Configure Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install pinned Semgrep CLI
+        run: |
+          python -m pip install --disable-pip-version-check 'semgrep==1.185.0'
+          semgrep --version
+
+      - name: Validate summary script
+        run: python -m unittest discover -s scripts/tests -p 'test_*.py' -v
+
+      # Scan application source, NOT the intentionally vulnerable benchmark dataset.
+      # No --error: findings are report-only by default, but scan errors are fatal.
+      - name: Run Semgrep (JSON and SARIF)
+        id: semgrep_scan
+        env:
+          SEMGREP_SEND_METRICS: 'off'
+        run: |
+          mkdir -p ci-reports
+          semgrep scan \
+            --config p/default \
+            --metrics off \
+            --no-git-ignore \
+            --json-output ci-reports/semgrep.json \
+            --sarif-output ci-reports/semgrep.sarif \
+            src/main/java
+
+      - name: Check scan completeness and summarize
+        env:
+          SEMGREP_FAIL_ON: ${{ vars.SEMGREP_FAIL_ON || 'none' }}
+        run: |
+          python scripts/ci_semgrep_summary.py \
+            --report ci-reports/semgrep.json \
+            --fail-on "$SEMGREP_FAIL_ON"
+
+      - name: Save Semgrep JSON and SARIF
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: semgrep-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ci-reports/semgrep.json
+            ci-reports/semgrep.sarif
+          if-no-files-found: warn
+          retention-days: 7
+
+  # Elevated permissions are isolated from the job that executes Semgrep.
+  # This job is disabled by default and not executed on forked pull requests.
+  code-scanning:
+    name: Publish SARIF (opt-in)
+    needs: semgrep
+    if: ${{ vars.ENABLE_CODE_SCANNING == 'true' && needs.semgrep.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    steps:
+      - name: Checkout sources (for SARIF paths)
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Download SARIF report
+        uses: actions/download-artifact@v8
+        with:
+          name: semgrep-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-reports
+
+      - name: Upload to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: ci-reports/semgrep.sarif
+          category: semgrep-java

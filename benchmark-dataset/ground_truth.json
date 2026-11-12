@@ -1,0 +1,232 @@
+{
+  "schema_version": 1,
+  "title": "DevSecOps Java benchmark pilot",
+  "evaluation_unit": "one Java source file",
+  "labels": {
+    "vulnerable": 10,
+    "safe": 10
+  },
+  "warning": "Safe means safe with respect to the intended category, not a proof of comprehensive security.",
+  "cases": [
+    {
+      "id": "Case001",
+      "path": "benchmark-dataset/java/Case001.java",
+      "label": "safe",
+      "category": "Hardcoded credential",
+      "cwe": "CWE-798",
+      "target_lines": [],
+      "review_note": "Значение читается из окружения; секрет не включён в файл исходного кода.",
+      "sha256": "6a4d370bdb933df6659d27e8028af3c8f0dbb08f4ee564878e0fd82e6af7dac3"
+    },
+    {
+      "id": "Case002",
+      "path": "benchmark-dataset/java/Case002.java",
+      "label": "vulnerable",
+      "category": "Path traversal",
+      "cwe": "CWE-22",
+      "target_lines": [
+        6
+      ],
+      "review_note": "Имя файла из входных данных присоединяется к корню без проверки итогового пути.",
+      "sha256": "7f00e907f995f52d2dbb946b3bc65b65255213fafed25f1e4e96e88eef75ce0a"
+    },
+    {
+      "id": "Case003",
+      "path": "benchmark-dataset/java/Case003.java",
+      "label": "safe",
+      "category": "Untrusted deserialization",
+      "cwe": "CWE-502",
+      "target_lines": [],
+      "review_note": "Для обычного текста используется ограниченное чтение UTF-8 вместо Java-десериализации.",
+      "sha256": "f5aa9fa2c893fb8f70c66259a3fa92bb7ccd5d4f434bba25909e18921cee09eb"
+    },
+    {
+      "id": "Case004",
+      "path": "benchmark-dataset/java/Case004.java",
+      "label": "vulnerable",
+      "category": "Server-side request forgery",
+      "cwe": "CWE-918",
+      "target_lines": [
+        7
+      ],
+      "review_note": "Пользователь напрямую определяет URL сетевого запроса.",
+      "sha256": "7f7ce34510f284790521ba9908e2e422be720c6e1e9dd6f03d7bf176ae16d983"
+    },
+    {
+      "id": "Case005",
+      "path": "benchmark-dataset/java/Case005.java",
+      "label": "safe",
+      "category": "HTML injection (text context)",
+      "cwe": "CWE-79",
+      "target_lines": [],
+      "review_note": "Данные кодируются для текстового HTML-контекста перед вставкой.",
+      "sha256": "7072fc744b35cb6ccdd4af1c00bfe6d6a9127459e169551ad13c25afa2122aff"
+    },
+    {
+      "id": "Case006",
+      "path": "benchmark-dataset/java/Case006.java",
+      "label": "vulnerable",
+      "category": "Hardcoded credential",
+      "cwe": "CWE-798",
+      "target_lines": [
+        3
+      ],
+      "review_note": "Статический секрет записан непосредственно в исходном коде (синтетическое значение).",
+      "sha256": "9f502fea134f64fe1598741ce5991403fffeb4224c0f5456ba7ef5c899762c78"
+    },
+    {
+      "id": "Case007",
+      "path": "benchmark-dataset/java/Case007.java",
+      "label": "safe",
+      "category": "OS command injection",
+      "cwe": "CWE-78",
+      "target_lines": [],
+      "review_note": "Программа и аргументы передаются без оболочки; форматная строка фиксирована.",
+      "sha256": "f593758454ec74986281c07f7b8bdcb90b871fd17e73d8a510cea79dfd878df2"
+    },
+    {
+      "id": "Case008",
+      "path": "benchmark-dataset/java/Case008.java",
+      "label": "vulnerable",
+      "category": "SQL injection",
+      "cwe": "CWE-89",
+      "target_lines": [
+        6
+      ],
+      "review_note": "Недоверенное значение конкатенируется с текстом SQL-запроса.",
+      "sha256": "8ca84c75a97175a3619a02f79441980c8b6b20004052f1e87f9af319910ecea5"
+    },
+    {
+      "id": "Case009",
+      "path": "benchmark-dataset/java/Case009.java",
+      "label": "safe",
+      "category": "XML external entity processing",
+      "cwe": "CWE-611",
+      "target_lines": [],
+      "review_note": "Запрещены DTD, внешние сущности и внешние DTD; внешняя схема также недоступна.",
+      "sha256": "0ae75ed97d3158f8c829cde8417e67ebc98b595735f9a7526654754b934a6e4c"
+    },
+    {
+      "id": "Case010",
+      "path": "benchmark-dataset/java/Case010.java",
+      "label": "vulnerable",
+      "category": "OS command injection",
+      "cwe": "CWE-78",
+      "target_lines": [
+        5
+      ],
+      "review_note": "Недоверенный текст включён в команду оболочки, передаваемую через sh -c.",
+      "sha256": "2404d09e042bfb9e43768fd4eff7f065f51e86c90935b763220193726a4578fc"
+    },
+    {
+      "id": "Case011",
+      "path": "benchmark-dataset/java/Case011.java",
+      "label": "safe",
+      "category": "SQL injection",
+      "cwe": "CWE-89",
+      "target_lines": [],
+      "review_note": "Параметр передаётся через PreparedStatement, а не вставляется в текст SQL.",
+      "sha256": "daf7efdbfd3d41bc29a95f6554de7d1b9a41ecf5c6f69709e8218d4810efc564"
+    },
+    {
+      "id": "Case012",
+      "path": "benchmark-dataset/java/Case012.java",
+      "label": "safe",
+      "category": "Predictable security token",
+      "cwe": "CWE-338",
+      "target_lines": [],
+      "review_note": "Для токена используется криптографический SecureRandom.",
+      "sha256": "4a2a68e991150e49c926b3089c275bcad942e63752151a88b73e20ea24080426"
+    },
+    {
+      "id": "Case013",
+      "path": "benchmark-dataset/java/Case013.java",
+      "label": "vulnerable",
+      "category": "Sensitive information logging",
+      "cwe": "CWE-532",
+      "target_lines": [
+        6
+      ],
+      "review_note": "Функция записывает пароль в журнал событий.",
+      "sha256": "df4ebff40ea6474014ed734fa3a57c9f6fdbd202e64783ea6f733cc0d6955a2a"
+    },
+    {
+      "id": "Case014",
+      "path": "benchmark-dataset/java/Case014.java",
+      "label": "vulnerable",
+      "category": "XML external entity processing",
+      "cwe": "CWE-611",
+      "target_lines": [
+        9
+      ],
+      "review_note": "XML-парсер создаётся без запрета DTD и внешних сущностей.",
+      "sha256": "14dfae3dcd7eb68adc4a4f9dd2747a25411af4f65f62abf3b64200e0cc653e1e"
+    },
+    {
+      "id": "Case015",
+      "path": "benchmark-dataset/java/Case015.java",
+      "label": "vulnerable",
+      "category": "HTML injection (text context)",
+      "cwe": "CWE-79",
+      "target_lines": [
+        4
+      ],
+      "review_note": "Недоверенный текст напрямую попадает в HTML без кодирования.",
+      "sha256": "6e6bcdade04296b1da3f7c56a1a3c6cce411629fbc95f9d10ea67121a2534fda"
+    },
+    {
+      "id": "Case016",
+      "path": "benchmark-dataset/java/Case016.java",
+      "label": "safe",
+      "category": "Server-side request forgery",
+      "cwe": "CWE-918",
+      "target_lines": [],
+      "review_note": "Хост запроса фиксирован; пользователь влияет только на кодированный сегмент пути.",
+      "sha256": "f90d9aea504e0eb5cef513201835bd065407ee782221522196aabe9a479b5546"
+    },
+    {
+      "id": "Case017",
+      "path": "benchmark-dataset/java/Case017.java",
+      "label": "safe",
+      "category": "Path traversal",
+      "cwe": "CWE-22",
+      "target_lines": [],
+      "review_note": "Путь канонизируется; чтение разрешено только для существующего файла внутри реального корня.",
+      "sha256": "ec3a768c088f63da780cff2fba92a2e7b93d586c05f361e7ec0788fdf1fdc0ae"
+    },
+    {
+      "id": "Case018",
+      "path": "benchmark-dataset/java/Case018.java",
+      "label": "safe",
+      "category": "Sensitive information logging",
+      "cwe": "CWE-532",
+      "target_lines": [],
+      "review_note": "Журнал содержит событие, но не сохраняет пароль.",
+      "sha256": "8ae19a67ca6f22e909300740a6c96bcda14f13c1b9d83066e2b966b8b84b4cef"
+    },
+    {
+      "id": "Case019",
+      "path": "benchmark-dataset/java/Case019.java",
+      "label": "vulnerable",
+      "category": "Predictable security token",
+      "cwe": "CWE-338",
+      "target_lines": [
+        6
+      ],
+      "review_note": "Для секретного токена применяется java.util.Random.",
+      "sha256": "176cff665f1ef70997e4b921495a46f0512421e1d854fc05e78180208b9ed014"
+    },
+    {
+      "id": "Case020",
+      "path": "benchmark-dataset/java/Case020.java",
+      "label": "vulnerable",
+      "category": "Untrusted deserialization",
+      "cwe": "CWE-502",
+      "target_lines": [
+        6
+      ],
+      "review_note": "Произвольные входные данные обрабатываются через ObjectInputStream.readObject().",
+      "sha256": "c08d6113e560589fe3f814a06990f33dc5b8034bc1a41bd7f6c18542945ef418"
+    }
+  ]
+}

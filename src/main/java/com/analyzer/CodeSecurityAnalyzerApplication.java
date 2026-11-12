@@ -7,7 +7,6 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class CodeSecurityAnalyzerApplication {
 
     public static void main(String[] args) {
-        // Вместо SpringApplication.run() передаем управление JavaFX
         Application.launch(JavaFxApplication.class, args);
     }
 }

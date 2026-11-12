@@ -1,16 +1,12 @@
 package com.analyzer.service.scanner;
 
+import com.analyzer.domain.model.SourceFile;
+import com.analyzer.domain.model.Vulnerability;
+
 import java.io.File;
-import java.io.IOException;
 import java.util.List;
 
 public interface ProjectScanner {
-    /**
-     * Сканирует указанную директорию и возвращает список файлов с исходным кодом.
-     *
-     * @param projectDir Корневая папка проекта
-     * @return Список текстовых файлов, содержащих код
-     * @throws IOException Если возникли проблемы при доступе к файловой системе
-     */
-    List<File> scanDirectory(File projectDir) throws IOException;
+    List<SourceFile> scanDirectory(File directory);
+    List<Vulnerability> analyzeFile(SourceFile file);
 }

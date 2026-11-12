@@ -2,21 +2,18 @@ package com.analyzer.service.ai;
 
 import com.analyzer.domain.model.SourceFile;
 import com.analyzer.domain.model.Vulnerability;
-import com.analyzer.ui.controller.MainController;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -25,26 +22,45 @@ public class OllamaClient {
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
+    private final String ollamaUrl;
+    private final String defaultModel;
 
-    // Конфигурация по умолчанию
-    private static final String OLLAMA_BASE_URL = "http://localhost:11434";
-    private static final String DEFAULT_MODEL_NAME = "qwen2.5-coder:7b";
+    public static class ChatMessage {
+        private String role;
+        private String content;
 
-    public OllamaClient(ObjectMapper objectMapper) {
+        public ChatMessage() {}
+
+        public ChatMessage(String role, String content) {
+            this.role = role;
+            this.content = content;
+        }
+
+        public String getRole() { return role; }
+        public void setRole(String role) { this.role = role; }
+
+        public String getContent() { return content; }
+        public void setContent(String content) { this.content = content; }
+    }
+
+    public OllamaClient(
+            ObjectMapper objectMapper,
+            @Value("${ollama.url:http://localhost:11434}") String ollamaUrl,
+            @Value("${ollama.model:qwen2.5-coder:7b}") String defaultModel) {
+
         this.objectMapper = objectMapper;
+        this.ollamaUrl = ollamaUrl;
+        this.defaultModel = defaultModel;
         this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
+                .connectTimeout(Duration.ofSeconds(60))
                 .build();
     }
 
-    /**
-     * Получение списка всех локально скачанных моделей из Ollama
-     */
     public List<String> getAvailableModels() {
         List<String> models = new ArrayList<>();
         try {
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(OLLAMA_BASE_URL + "/api/tags"))
+                    .uri(URI.create(ollamaUrl + "/api/tags"))
                     .GET()
                     .timeout(Duration.ofSeconds(5))
                     .build();
@@ -54,281 +70,366 @@ public class OllamaClient {
                 JsonNode root = objectMapper.readTree(response.body());
                 JsonNode modelsNode = root.get("models");
                 if (modelsNode != null && modelsNode.isArray()) {
-                    for (JsonNode model : modelsNode) {
-                        if (model.has("name")) {
-                            models.add(model.get("name").asText());
-                        }
+                    for (JsonNode modelNode : modelsNode) {
+                        models.add(modelNode.get("name").asText());
                     }
                 }
             }
         } catch (Exception e) {
-            System.err.println("Ошибка при получении списка моделей Ollama: " + e.getMessage());
+            System.err.println("Не удалось получить список моделей Ollama: " + e.getMessage());
+        }
+
+        if (models.isEmpty()) {
+            models.add(defaultModel);
         }
         return models;
     }
 
-    /**
-     * Отправка произвольного сообщения ИИ с указанием конкретной модели (для одиночных промптов)
-     */
-    public String chatWithModel(String modelName, String userPrompt) {
-        String systemPrompt = "Вы — универсальный и высококвалифицированный ИИ-ассистент. Отвечайте на вопросы пользователя вежливо, четко и структурировано на русском языке.";
-        String effectiveModel = (modelName != null && !modelName.isBlank()) ? modelName : DEFAULT_MODEL_NAME;
-        return executeOllamaRequest(userPrompt, systemPrompt, effectiveModel);
-    }
+    public String chatWithModel(String modelName, String prompt) {
+        String targetModel = (modelName != null && !modelName.isBlank()) ? modelName : defaultModel;
 
-    /**
-     * Отправка полной истории диалога через Ollama Chat API (/api/chat)
-     * Ожидает роли: "user" или "assistant"
-     */
-    public String chatWithHistory(String modelName, List<MainController.ChatMessage> history) {
-        String effectiveModel = (modelName != null && !modelName.isBlank()) ? modelName : DEFAULT_MODEL_NAME;
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("model", targetModel);
+        requestBody.put("prompt", prompt);
+        requestBody.put("stream", false);
 
         try {
-            ObjectNode requestJson = objectMapper.createObjectNode();
-            requestJson.put("model", effectiveModel);
-            requestJson.put("stream", false);
-
-            ArrayNode messagesArray = requestJson.putArray("messages");
-
-            // 1. Системный промпт как заголовок контекста
-            ObjectNode systemMsgNode = messagesArray.addObject();
-            systemMsgNode.put("role", "system");
-            systemMsgNode.put("content", "Вы — универсальный и высококвалифицированный ИИ-ассистент. Отвечайте на вопросы пользователя вежливо, четко и структурировано на русском языке.");
-
-            // 2. Формируем историю сообщений диалога
-            for (MainController.ChatMessage msg : history) {
-                ObjectNode msgNode = messagesArray.addObject();
-                msgNode.put("role", msg.getRole()); // "user" или "assistant"
-                msgNode.put("content", msg.getContent());
-            }
-
-            String jsonPayload = objectMapper.writeValueAsString(requestJson);
+            String jsonPayload = objectMapper.writeValueAsString(requestBody);
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(OLLAMA_BASE_URL + "/api/chat"))
+                    .uri(URI.create(ollamaUrl + "/api/generate"))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
-                    .timeout(Duration.ofMinutes(4))
+                    .timeout(Duration.ofSeconds(180))
                     .build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() == 200) {
-                JsonNode responseJson = objectMapper.readTree(response.body());
-                if (responseJson.has("message") && responseJson.get("message").has("content")) {
-                    return responseJson.get("message").get("content").asText().trim();
-                }
-                return "⚠️ Ошибка: не удалось извлечь поле message.content из ответа Ollama.";
+                JsonNode responseNode = objectMapper.readTree(response.body());
+                return responseNode.get("response").asText();
             } else {
-                return " Ошибка обращения к Ollama Chat API: код ответа " + response.statusCode();
+                throw new RuntimeException("Ошибка Ollama API: HTTP " + response.statusCode());
             }
-
-        } catch (IOException | InterruptedException e) {
-            if (e instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
-            e.printStackTrace();
-            return "❌ Ошибка при вызове /api/chat: " + e.getMessage();
+        } catch (Exception e) {
+            throw new RuntimeException("Ошибка при вызове Ollama: " + e.getMessage(), e);
         }
     }
 
-    public List<Vulnerability> analyzeCodeChunk(String codeChunk) {
-        String systemPrompt = """
-            Вы — старший аудитор по информационной безопасности приложений. Проанализируйте предоставленный фрагмент исходного кода на наличие уязвимостей.
-            Вы должны искать следующие проблемы: SQL-инъекции, XSS, проблемы аутентификации, слабая криптография, зашитые секреты (hardcoded secrets), уязвимые зависимости.
-    
-            КРИТИЧЕСКОЕ ПРАВИЛО: Любые зашитые учетные данные, статические URL-адреса локальных сервисов (например, http://localhost:11434) или зашитые параметры конфигурации (например, имена моделей ИИ) ОБЯЗАТЕЛЬНО должны помечаться как уязвимость 'Зашитые секреты' или 'Неправильная конфигурация' с уровнем критичности HIGH или MEDIUM.
-    
-            ВЫ ДОЛЖНЫ ОТВЕЧАТЬ ИСКЛЮЧИТЕЛЬНО НА РУССКОМ ЯЗЫКЕ (поля title, severity, description, recommendation).
-    
-            Вы должны вернуть ТОЛЬКО массив JSON из объектов ИЛИ объект JSON, содержащий массив с ключом "vulnerabilities".
-            Каждый объект уязвимости должен иметь строго следующие поля (имена полей остаются на английском!):
-            - "title": краткое название уязвимости на русском
-            - "severity": строго одно из значений: HIGH, MEDIUM или LOW
-            - "description": подробное объяснение проблемы на русском
-            - "lineRange": примерный диапазон строк в фрагменте (например, "15-18") или "Неизвестно"
-            - "recommendation": четкая инструкция по исправлению на русском
-    
-            Если уязвимости не найдены, верните пустой массив JSON: []
-    """;
+    public String chatWithHistory(String modelName, List<ChatMessage> history) {
+        String targetModel = (modelName != null && !modelName.isBlank()) ? modelName : defaultModel;
+
+        List<Map<String, String>> messages = new ArrayList<>();
+        for (ChatMessage msg : history) {
+            messages.add(Map.of("role", msg.getRole(), "content", msg.getContent()));
+        }
+
+        Map<String, Object> requestBody = new HashMap<>();
+        requestBody.put("model", targetModel);
+        requestBody.put("messages", messages);
+        requestBody.put("stream", false);
 
         try {
-            Map<String, Object> options = Map.of(
-                    "temperature", 0.0,
-                    "top_p", 0.1,
-                    "seed", 42
-            );
-
-            Map<String, Object> requestBody = Map.of(
-                    "model", DEFAULT_MODEL_NAME,
-                    "prompt", "Code to analyze:\n\n" + codeChunk,
-                    "system", systemPrompt,
-                    "stream", false,
-                    "format", "json",
-                    "options", options
-            );
-
             String jsonPayload = objectMapper.writeValueAsString(requestBody);
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(OLLAMA_BASE_URL + "/api/generate"))
+                    .uri(URI.create(ollamaUrl + "/api/chat"))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
-                    .timeout(Duration.ofMinutes(5))
+                    .timeout(Duration.ofSeconds(180))
                     .build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-            if (response.statusCode() != 200) {
-                System.err.println("Ollama API returned error status: " + response.statusCode());
-                return new ArrayList<>();
+            if (response.statusCode() == 200) {
+                JsonNode root = objectMapper.readTree(response.body());
+                return root.get("message").get("content").asText();
+            } else {
+                throw new RuntimeException("Ошибка Ollama Chat API: HTTP " + response.statusCode());
             }
-
-            JsonNode rootNode = objectMapper.readTree(response.body());
-            String aiResponseText = rootNode.get("response").asText().trim();
-
-            JsonNode jsonNode = objectMapper.readTree(aiResponseText);
-
-            if (jsonNode.isArray()) {
-                return objectMapper.readValue(aiResponseText, new TypeReference<List<Vulnerability>>() {});
-            }
-
-            if (jsonNode.isObject()) {
-                if (jsonNode.has("vulnerabilities") && jsonNode.get("vulnerabilities").isArray()) {
-                    JsonNode arrayNode = jsonNode.get("vulnerabilities");
-                    return objectMapper.readValue(arrayNode.toString(), new TypeReference<List<Vulnerability>>() {});
-                }
-                System.out.println("ИИ вернул объект без уязвимостей: " + aiResponseText);
-            }
-
-            return new ArrayList<>();
-
-        } catch (IOException | InterruptedException e) {
-            System.err.println("Error communication with Ollama: " + e.getMessage());
-            if (e instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
-            return new ArrayList<>();
+        } catch (Exception e) {
+            throw new RuntimeException("Ошибка чата Ollama: " + e.getMessage(), e);
         }
     }
 
     /**
-     * Консультация с ИИ по конкретной найденной уязвимости.
+     * Анализ чанка кода с автоматическим определением языка (перегрузка для обратной совместимости)
      */
-    public String askQuestionAboutVulnerability(SourceFile sourceFile, Vulnerability vulnerability, String userQuestion) {
-        String systemPrompt = """
-            Вы — Senior Java/Security Engineer. Ваша задача — проконсультировать разработчика по найденной уязвимости в его коде.
-            Давайте четкие, профессиональные и исчерпывающие ответы НА РУССКОМ ЯЗЫКЕ.
-            Если пользователь просит пример кода — приведите полностью исправленный и безопасный вариант этого фрагмента кода с комментариями.
-            """;
+    public List<Vulnerability> analyzeCodeChunk(String codeChunk, String language) {
+        return analyzeCodeChunk(codeChunk, language, defaultModel);
+    }
 
-        String prompt = String.format("""
-            Контекст файла: %s
-            Уязвимость: %s (Критичность: %s, Строки: %s)
-            Описание проблемы: %s
-            
-            Исходный код файла:
+    /**
+     * Полноценный мультиязычный анализ чанка кода (C/C++, Python, JS, Java, Go и др.)
+     */
+    /**
+     * Анализ фрагмента кода с указанием модели
+     */
+    public List<Vulnerability> analyzeCodeChunk(String codeChunk, String language, String modelName) {
+        String targetModel = (modelName != null && !modelName.isBlank()) ? modelName : defaultModel;
+
+        String langContext = (language != null && !language.equalsIgnoreCase("Unknown"))
+                ? "Язык фрагмента: " + language + "."
+                : "Определи язык программирования переданного фрагмента автоматически.";
+
+        String prompt = """
+            Ты проводишь предварительный статический аудит безопасности кода.
+            %s
+            Возвращай только JSON-объект с массивом vulnerabilities.
+            Для КАЖДОЙ находки обязательны: title, severity (HIGH/MEDIUM/LOW),
+            cwe (существующий идентификатор вида CWE-89), startLine и endLine (ЦЕЛЫЕ
+            числовые АБСОЛЮТНЫЕ номера строк файла), evidence, description, recommendation.
+            evidence = ДОСЛОВНАЯ цитата одной строки исходного кода внутри диапазона
+            startLine..endLine (минимум 6 символов), без маркировки Lномер | и без многоточий.
+            Категория CWE выбирается по РЕАЛЬНОМУ МЕХАНИЗМУ В КОДЕ, а не по общей тревожности.
+            Используй справочник: SQL-инъекция CWE-89; системные команды через shell CWE-78;
+            Path Traversal CWE-22; XSS CWE-79; XXE CWE-611; десериализация Java-объектов CWE-502;
+            записанные в исходном коде секреты CWE-798; секреты в журналах CWE-532;
+            SSRF CWE-918; слабая случайность для защитных токенов CWE-338.
+            CWE-89 относится ТОЛЬКО к SQL: не выбирай CWE-89 для логирования, файлов,
+            HTTP/URI, ProcessBuilder, XML, HTML, ObjectInputStream или секретов.
+            Наличие API само по себе не делает код уязвимым: проверяй PreparedStatement,
+            HTML-экранирование, ограничения XML-сущностей, канонизацию пути,
+            отдельные аргументы ProcessBuilder без командной оболочки.
+            Не используй примеры в этой инструкции в качестве доказательств находок.
+            Нельзя выдумывать номера строк, код CWE или доказательства. Считай только
+            строки исходного кода Lномер |; служебные заголовки и текст запроса не являются
+            строками исходного файла. Если нет достаточно подтверждений — не создавай находку.
+            Не считай отсутствие уязвимости доказательством безопасности.
+            Без находок: {"vulnerabilities": []}.
+
+            Код для анализа (Lномер | обозначает оригинальную строку файла):
             ```
             %s
             ```
-            
-            Вопрос разработчика: %s
-            """,
-                sourceFile.getName(),
+            """.formatted(langContext, withSourceLineNumbers(codeChunk));
+
+        Map<String, Object> property = Map.of(
+                "title", Map.of("type", "string"),
+                "severity", Map.of("type", "string", "enum", List.of("HIGH", "MEDIUM", "LOW")),
+                "cwe", Map.of("type", "string"),
+                "startLine", Map.of("type", "integer"),
+                "endLine", Map.of("type", "integer"),
+                "evidence", Map.of("type", "string"),
+                "description", Map.of("type", "string"),
+                "recommendation", Map.of("type", "string"));
+        Map<String, Object> itemSchema = Map.of(
+                "type", "object", "properties", property,
+                "required", List.of("title", "severity", "cwe", "startLine", "endLine",
+                        "evidence", "description", "recommendation"),
+                "additionalProperties", false);
+        Map<String, Object> outputSchema = Map.of(
+                "type", "object",
+                "properties", Map.of("vulnerabilities", Map.of("type", "array", "items", itemSchema)),
+                "required", List.of("vulnerabilities"), "additionalProperties", false);
+        StructuredFindingParser parser = new StructuredFindingParser(objectMapper);
+        String numberedSource = withSourceLineNumbers(codeChunk);
+        String lastValidationFailure = "";
+        int firstAttemptCandidateCount = 0;
+        List<String> invalidResponses = new ArrayList<>();
+        // Retry only an invalid model response, never an HTTP/network failure.
+        // A second invalid response fails the file and is recorded in scan diagnostics.
+        for (int attempt = 0; attempt < 2; attempt++) {
+            String currentPrompt = attempt == 0 ? prompt : prompt + "\n\n"
+                    + "ПОВТОРНЫЙ ЗАПРОС: предыдущий ответ не прошёл проверку: "
+                    + lastValidationFailure + ". Исправь формат, координаты и evidence. "
+                    + "Цитируй РОВНО ОДНУ реальную строку с правильным L-номером. "
+                    + "Сохрани обоснованные находки, не заменяй их пустым списком. Верни только JSON.";
+            Map<String, Object> requestBody = Map.of(
+                    "model", targetModel,
+                    "prompt", currentPrompt,
+                    "stream", false,
+                    "format", outputSchema,
+                    "options", Map.of("temperature", 0));
+            String rawResult;
+            try {
+                String jsonPayload = objectMapper.writeValueAsString(requestBody);
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(ollamaUrl + "/api/generate"))
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
+                        .timeout(Duration.ofSeconds(360))
+                        .build();
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() != 200) {
+                    throw new IllegalStateException("Ollama API вернул HTTP " + response.statusCode());
+                }
+                JsonNode apiJson = objectMapper.readTree(response.body());
+                JsonNode answer = apiJson == null ? null : apiJson.get("response");
+                if (answer == null || !answer.isTextual() || answer.asText().isBlank()) {
+                    throw new IllegalStateException("Ollama вернула пустое или некорректное поле response");
+                }
+                rawResult = answer.asText();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Анализ кода прерван (модель: " + targetModel + ")", e);
+            } catch (Exception e) {
+                throw new IllegalStateException("Анализ кода не выполнен (модель: " + targetModel
+                        + "): " + e.getMessage(), e);
+            }
+            try {
+                List<Vulnerability> result = parser.parse(rawResult);
+                if (attempt > 0 && result.size() < firstAttemptCandidateCount) {
+                    throw new IllegalArgumentException("повторный ответ потерял ранее найденные кандидаты: "
+                            + firstAttemptCandidateCount + " -> " + result.size());
+                }
+                StructuredEvidencePreflight.check(numberedSource, result);
+                for (Vulnerability finding : result) finding.setModelOutputStatus("EVIDENCE_MATCHED");
+                return result;
+            } catch (java.io.IOException | IllegalArgumentException validationFailure) {
+                if (attempt == 0) {
+                    firstAttemptCandidateCount = responseCandidateCount(rawResult);
+                }
+                invalidResponses.add(rawResult);
+                lastValidationFailure = conciseValidationError(validationFailure.getMessage());
+            }
+        }
+        // Both strict attempts failed. Retain independently parseable candidates,
+        // but NEVER turn a malformed response into a successful clean scan.
+        StructuredFindingParser.ParseOutcome best = null;
+        for (String raw : invalidResponses) {
+            try {
+                var current = parser.parseBestEffort(raw);
+                if (!current.findings().isEmpty() && (best == null
+                        || current.findings().size() > best.findings().size()
+                        || (current.findings().size() == best.findings().size()
+                        && current.issues().size() < best.issues().size()))) {
+                    best = current;
+                }
+            } catch (java.io.IOException | IllegalArgumentException ignored) {
+                // A malformed JSON root must not be converted into a clean response.
+            }
+        }
+        if (best != null) {
+            for (Vulnerability finding : best.findings()) {
+                boolean evidenceMatches = StructuredEvidencePreflight.matches(numberedSource, finding);
+                boolean uncertainEvidence = !evidenceMatches
+                        || "EVIDENCE_UNVERIFIED".equals(finding.getModelOutputStatus());
+                if (uncertainEvidence) {
+                    finding.setModelOutputStatus("EVIDENCE_UNVERIFIED");
+                    finding.setModelOutputNote("После двух попыток цитата LLM не подтверждена оригиналом. "
+                            + "Находка сохранена только для ручного анализа.");
+                    // Original source context is separate from quoted model evidence.
+                    finding.setSourceExcerpt(StructuredEvidencePreflight.sourceExcerpt(
+                            numberedSource, finding.getStartLine()));
+                } else {
+                    finding.setModelOutputStatus("EVIDENCE_MATCHED");
+                }
+                if (best.candidateCount() > best.findings().size()
+                        || firstAttemptCandidateCount > best.candidateCount()) {
+                    finding.setModelOutputStatus("PARTIAL_RESPONSE");
+                    finding.setModelOutputNote("Часть исходных кандидатов отсутствует или имеет "
+                            + "некорректную структуру; анализ неполный. "
+                            + (uncertainEvidence ? "Цитата также не подтверждена." : ""));
+                }
+            }
+            return best.findings();
+        }
+        throw new IllegalStateException("LLM-анализ неполный (модель: " + targetModel
+                + "): нет пригодных кандидатов после двух попыток: " + lastValidationFailure);
+    }
+
+    private int responseCandidateCount(String response) {
+        try {
+            JsonNode root = objectMapper.readTree(response);
+            JsonNode findings = root == null ? null : root.path("vulnerabilities");
+            return findings != null && findings.isArray() ? findings.size() : 0;
+        } catch (Exception ignored) {
+            return 0;
+        }
+    }
+
+    private static String conciseValidationError(String message) {
+        if (message == null) return "некорректный ответ";
+        String compact = message.replaceAll("[\r\n\t]", " ");
+        return compact.length() > 160 ? compact.substring(0, 160) : compact;
+    }
+
+    private static String withSourceLineNumbers(String codeChunk) {
+        // Long CodeChunks already contain absolute L-numbers and their own bounds.
+        if (codeChunk.matches("(?s).*?(?m:^L[0-9]+\\s*\\|).*")) return codeChunk;
+        List<String> lines = codeChunk.lines().toList();
+        StringBuilder numbered = new StringBuilder();
+        for (int i = 0; i < lines.size(); i++) {
+            numbered.append('L').append(i + 1).append(" | ").append(lines.get(i)).append('\n');
+        }
+        return numbered.toString();
+    }
+
+    /**
+     * Консультация по уязвимости с учетом реального контекста файла
+     */
+    public String askQuestionAboutVulnerability(SourceFile file, Vulnerability vulnerability, String userQuestion) {
+        String lang = detectLanguageFromName(file.getName());
+
+        String prompt = """
+                Контекст: В файле "%s" (язык: %s) обнаружена уязвимость "%s" (уровень: %s) на строках %s.
+                Описание: %s
+                
+                Вопрос пользователя: %s
+                Ответь кратко, понятно и с примером кода с учетом синтаксиса и специфики языка %s.
+                """.formatted(
+                file.getName(),
+                lang,
                 vulnerability.getTitle(),
                 vulnerability.getSeverity(),
                 vulnerability.getLineRange(),
                 vulnerability.getDescription(),
-                sourceFile.getContent(),
-                userQuestion
+                userQuestion,
+                lang
         );
 
-        return executeOllamaRequest(prompt, systemPrompt, DEFAULT_MODEL_NAME);
+        return chatWithModel(defaultModel, prompt);
     }
 
+
+
     /**
-     * Генерация полностью исправленной версии файла.
+     * Универсальное автоматическое исправление исходного файла на любом языке
      */
     public String fixSourceFile(SourceFile file) {
-        String systemPrompt = "Ты — Senior Java Security Architect. Твоя задача — написать безопасный, чистый и исправленный код без уязвимостей.";
+        String lang = detectLanguageFromName(file.getName());
 
-        StringBuilder sb = new StringBuilder();
-        sb.append(String.format("Ниже представлен исходный код файла '%s', в котором обнаружены следующие уязвимости:\n", file.getName()));
+        String prompt = """
+                Ты — эксперт по безопасному рефакторингу программного обеспечения.
+                Исправь найденные уязвимости безопасности в следующем файле, строго сохраняя язык программирования (%s), оригинальную логику и архитектуру.
+                Верни ИСКЛЮЧИТЕЛЬНО ГОТОВЫЙ ИСПРАВЛЕННЫЙ КОД без каких-либо вводных слов, пояснений и markdown-блоков (без ```).
+                
+                Файл (%s):
+                ```
+                %s
+                ```
+                """.formatted(lang, file.getName(), file.getContent());
 
-        for (Vulnerability v : file.getVulnerabilities()) {
-            sb.append(String.format("- %s (Строки: %s): %s\n", v.getTitle(), v.getLineRange(), v.getDescription()));
-        }
-
-        sb.append("\nВот исходный код файла:\n```java\n")
-                .append(file.getContent())
-                .append("\n```\n\n")
-                .append("Перепиши этот код так, чтобы полностью устранить все указанные уязвимости. ")
-                .append("ВАЖНО: В ответе верни ИСКЛЮЧИТЕЛЬНО готовый исправленный код Java внутри тегов ```java ... ``` без лишних приветствий и пояснений.");
-
-        String response = executeOllamaRequest(sb.toString(), systemPrompt, DEFAULT_MODEL_NAME);
-
-        return extractCodeBlock(response);
+        String rawResponse = chatWithModel(defaultModel, prompt);
+        String extracted = extractCodeBlock(rawResponse);
+        return extracted.isBlank() ? rawResponse.trim() : extracted;
     }
 
-    /**
-     * Универсальный private-метод для отправки любого текстового промпта в Ollama через /api/generate
-     */
-    private String executeOllamaRequest(String prompt, String systemPrompt, String modelName) {
-        try {
-            Map<String, Object> options = Map.of(
-                    "temperature", 0.1
-            );
-
-            Map<String, Object> requestBody = Map.of(
-                    "model", modelName,
-                    "prompt", prompt,
-                    "system", systemPrompt,
-                    "stream", false,
-                    "options", options
-            );
-
-            String jsonPayload = objectMapper.writeValueAsString(requestBody);
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(OLLAMA_BASE_URL + "/api/generate"))
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
-                    .timeout(Duration.ofMinutes(4))
-                    .build();
-
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() == 200) {
-                JsonNode rootNode = objectMapper.readTree(response.body());
-                return rootNode.get("response").asText().trim();
-            } else {
-                return "Ошибка обращения к ИИ: код ответа " + response.statusCode();
-            }
-
-        } catch (IOException | InterruptedException e) {
-            if (e instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
-            return "Ошибка связи с Ollama: " + e.getMessage();
-        }
+    private String detectLanguageFromName(String fileName) {
+        if (fileName == null) return "Unknown";
+        String lower = fileName.toLowerCase();
+        if (lower.endsWith(".java")) return "Java";
+        if (lower.endsWith(".cpp") || lower.endsWith(".cc") || lower.endsWith(".cxx")) return "C++";
+        if (lower.endsWith(".c") || lower.endsWith(".h") || lower.endsWith(".hpp")) return "C/C++";
+        if (lower.endsWith(".py")) return "Python";
+        if (lower.endsWith(".js") || lower.endsWith(".jsx")) return "JavaScript";
+        if (lower.endsWith(".ts") || lower.endsWith(".tsx")) return "TypeScript";
+        if (lower.endsWith(".go")) return "Go";
+        if (lower.endsWith(".cs")) return "C#";
+        if (lower.endsWith(".php")) return "PHP";
+        return "Unknown";
     }
 
-    private String extractCodeBlock(String markdown) {
-        if (markdown == null || markdown.isEmpty()) return "";
-
-        if (markdown.contains("```java")) {
-            int start = markdown.indexOf("```java") + 7;
-            int end = markdown.indexOf("```", start);
-            if (end != -1) {
-                return markdown.substring(start, end).trim();
-            }
-        } else if (markdown.contains("```")) {
-            int start = markdown.indexOf("```") + 3;
-            int end = markdown.indexOf("```", start);
-            if (end != -1) {
-                return markdown.substring(start, end).trim();
+    private String extractCodeBlock(String text) {
+        if (text != null && text.contains("```")) {
+            int start = text.indexOf("```");
+            int firstNewLine = text.indexOf("\n", start);
+            int end = text.lastIndexOf("```");
+            if (firstNewLine != -1 && end > firstNewLine) {
+                return text.substring(firstNewLine + 1, end).trim();
             }
         }
-        return markdown.trim();
+        return text != null ? text.trim() : "";
     }
 }
