@@ -1,7 +1,5 @@
 package com.analyzer.ui.controller;
 
-import javafx.scene.layout.VBox;
-
 import com.analyzer.domain.model.SourceFile;
 import com.analyzer.domain.model.Vulnerability;
 import com.analyzer.service.agent.AgentService;
@@ -32,6 +30,7 @@ import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.input.*;
 import javafx.scene.web.WebView;
 import javafx.geometry.Insets;
+import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
@@ -53,7 +52,7 @@ import com.analyzer.service.benchmark.BenchmarkService;
 public class MainController {
 
     // ==========================================
-    // Р’РєР»Р°РґРєР° 1: РђРЅР°Р»РёР· Р±РµР·РѕРїР°СЃРЅРѕСЃС‚Рё РїСЂРѕРµРєС‚Р°
+    // Вкладка 1: Анализ безопасности проекта
     // ==========================================
     @FXML private Button selectFolderButton;
     @FXML private CheckBox selectAllCheckBox;
@@ -66,7 +65,7 @@ public class MainController {
     @FXML private Button fixAllButton;
     @FXML private Button fixCurrentFileButton;
 
-    // Р’С‹Р±РѕСЂ РјРѕРґРµР»Рё РґР»СЏ СЃРєР°РЅРёСЂРѕРІР°РЅРёСЏ (РїРѕРґРґРµСЂР¶РёРІР°РµС‚ РѕР±Р° РІРѕР·РјРѕР¶РЅС‹С… fx:id РёР· СЂР°Р·РјРµС‚РєРё)
+    // Выбор модели для сканирования (поддерживает оба возможных fx:id из разметки)
     @FXML private ComboBox<String> scanModelComboBox;
     @FXML private ComboBox<String> modelComboBox;
 
@@ -82,7 +81,7 @@ public class MainController {
     @FXML private Button sendPromptButton;
 
     // ==========================================
-    // Р’РєР»Р°РґРєР° 2: РЎРІРѕР±РѕРґРЅС‹Р№ С‡Р°С‚ СЃ РР
+    // Вкладка 2: Свободный чат с ИИ
     // ==========================================
     @FXML private ComboBox<String> chatModelComboBox;
     @FXML private Button refreshModelsButton;
@@ -92,7 +91,7 @@ public class MainController {
     @FXML private Button clearGeneralChatButton;
 
     // ==========================================
-    // Р’РєР»Р°РґРєР° 3: РР-РђРіРµРЅС‚ Р“РµРЅРµСЂР°С†РёРё РџСЂРѕРµРєС‚Р°
+    // Вкладка 3: ИИ-Агент Генерации Проекта
     // ==========================================
     @FXML private TextField agentWorkDirInput;
     @FXML private Button agentSelectFolderButton;
@@ -102,7 +101,7 @@ public class MainController {
     @FXML private WebView agentLogWebView;
 
     // ==========================================
-    // Р’РєР»Р°РґРєР° 4: РЎСЂР°РІРЅРёС‚РµР»СЊРЅС‹Р№ Р±РµРЅС‡РјР°СЂРєРёРЅРі
+    // Вкладка 4: Сравнительный бенчмаркинг
     // ==========================================
     @FXML private Button selectBenchmarkFolderButton;
     @FXML private Label benchmarkFolderLabel;
@@ -124,7 +123,7 @@ public class MainController {
     private File benchmarkFolder;
 
     // ==========================================
-    // РЎРµСЂРІРёСЃС‹ Spring
+    // Сервисы Spring
     // ==========================================
     private final FileAnalyzer fileAnalyzer;
     private final CodeParser codeParser;
@@ -141,19 +140,19 @@ public class MainController {
     private UnifiedScanService.ScanResult lastScanResult;
 
     // ==========================================
-    // Р’РЅСѓС‚СЂРµРЅРЅРёРµ СЃРѕСЃС‚РѕСЏРЅРёСЏ Рё Р±СѓС„РµСЂС‹
+    // Внутренние состояния и буферы
     // ==========================================
     private final ObservableList<SourceFile> scannedFiles = FXCollections.observableArrayList();
 
     private final Parser markdownParser = Parser.builder().build();
     private final HtmlRenderer htmlRenderer = HtmlRenderer.builder().build();
 
-    // HTML-Р±СѓС„РµСЂС‹ РґР»СЏ СЂРµРЅРґРµСЂРёРЅРіР° WebViews
+    // HTML-буферы для рендеринга WebViews
     private final StringBuilder chatHistoryHtml = new StringBuilder();
     private final StringBuilder generalChatHtml = new StringBuilder();
     private final StringBuilder agentLogHtml = new StringBuilder();
 
-    // Р•РґРёРЅР°СЏ РёСЃС‚РѕСЂРёСЏ СЃРѕРѕР±С‰РµРЅРёР№ РѕР±С‰РµРіРѕ С‡Р°С‚Р°
+    // Единая история сообщений общего чата
     private final List<ChatMessage> generalChatHistory = new ArrayList<>();
 
     public MainController(ProjectScanner projectScanner,
@@ -185,14 +184,14 @@ public class MainController {
 
     @FXML
     public void initialize() {
-        // 1. РќР°СЃС‚СЂРѕР№РєР° С‚Р°Р±Р»РёС†С‹ СѓСЏР·РІРёРјРѕСЃС‚РµР№
+        // 1. Настройка таблицы уязвимостей
         if (titleColumn != null) titleColumn.setCellValueFactory(new PropertyValueFactory<>("title"));
         if (severityColumn != null) severityColumn.setCellValueFactory(new PropertyValueFactory<>("severity"));
         if (linesColumn != null) linesColumn.setCellValueFactory(new PropertyValueFactory<>("lineRange"));
         if (validationColumn != null) validationColumn.setCellValueFactory(
                 new PropertyValueFactory<>("validationStatusLabel"));
 
-        // 2. РћС„РѕСЂРјР»РµРЅРёРµ РґРµСЂРµРІР° С„Р°Р№Р»РѕРІ СЃ С‡РµРєР±РѕРєСЃР°РјРё Рё СЃС‚Р°С‚СѓСЃР°РјРё
+        // 2. Оформление дерева файлов с чекбоксами и статусами
         if (fileTreeView != null) {
             fileTreeView.setCellFactory(tv -> new CheckBoxTreeCell<File>(
                     item -> item instanceof CheckBoxTreeItem<File> cb ? cb.selectedProperty() : null,
@@ -228,10 +227,10 @@ public class MainController {
                         int vulnCount = matchedFile.getVulnerabilities() != null ? matchedFile.getVulnerabilities().size() : 0;
 
                         if (vulnCount > 0) {
-                            setText(item.getName() + " вљ пёЏ (" + vulnCount + ")");
+                            setText(item.getName() + " ⚠️ (" + vulnCount + ")");
                             setStyle("-fx-text-fill: #c0392b; -fx-font-weight: bold;");
                         } else {
-                            setText(item.getName() + " вњ…");
+                            setText(item.getName() + " ✅");
                             setStyle("-fx-text-fill: #27ae60; -fx-font-weight: normal;");
                         }
                     } else {
@@ -241,7 +240,7 @@ public class MainController {
                 }
             });
 
-            // 3. РЎР»СѓС€Р°С‚РµР»Рё РІС‹Р±РѕСЂР° С„Р°Р№Р»РѕРІ Рё СѓСЏР·РІРёРјРѕСЃС‚РµР№
+            // 3. Слушатели выбора файлов и уязвимостей
             fileTreeView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
                 if (newVal != null && newVal.getValue() != null && newVal.getValue().isFile()) {
                     File selectedFile = newVal.getValue();
@@ -261,7 +260,7 @@ public class MainController {
             });
         }
 
-        // 4. РќР°Р·РЅР°С‡РµРЅРёРµ РѕР±СЂР°Р±РѕС‚С‡РёРєРѕРІ СЃРѕР±С‹С‚РёР№ РґР»СЏ РїРµСЂРІРѕР№ РІРєР»Р°РґРєРё
+        // 4. Назначение обработчиков событий для первой вкладки
         if (selectAllCheckBox != null) selectAllCheckBox.setOnAction(event -> handleSelectAllToggle());
         if (selectFolderButton != null) selectFolderButton.setOnAction(event -> handleSelectFolderClick());
         if (clearButton != null) clearButton.setOnAction(event -> handleClearProjectClick());
@@ -275,7 +274,7 @@ public class MainController {
         if (fixCurrentFileButton != null) fixCurrentFileButton.setOnAction(event -> handleFixCurrentFileClick());
         if (fixAllButton != null) fixAllButton.setOnAction(event -> handleFixAllClick());
 
-        // 5. РќР°Р·РЅР°С‡РµРЅРёРµ РѕР±СЂР°Р±РѕС‚С‡РёРєРѕРІ СЃРѕР±С‹С‚РёР№ РґР»СЏ СЃРІРѕР±РѕРґРЅРѕРіРѕ С‡Р°С‚Р°
+        // 5. Назначение обработчиков событий для свободного чата
         if (sendGeneralChatPromptButton != null) {
             sendGeneralChatPromptButton.setOnAction(event -> handleSendGeneralChatPrompt());
         }
@@ -299,7 +298,7 @@ public class MainController {
             }
         });
 
-        // РќР°СЃС‚СЂРѕР№РєР° РєРѕР»РѕРЅРѕРє С‚Р°Р±Р»РёС†С‹ Р±РµРЅС‡РјР°СЂРєР°
+        // Настройка колонок таблицы бенчмарка
         if (benchmarkTable != null) {
             bmModelCol.setCellValueFactory(new PropertyValueFactory<>("modelName"));
             bmFilesCol.setCellValueFactory(new PropertyValueFactory<>("totalFiles"));
@@ -314,7 +313,7 @@ public class MainController {
             bmAvgTimeCol.setCellValueFactory(new PropertyValueFactory<>("avgTimeFormatted"));
         }
 
-        // РЎР±СЂРѕСЃ РѕРєРѕРЅ WebView Рё Р·Р°РіСЂСѓР·РєР° РјРѕРґРµР»РµР№
+        // Сброс окон WebView и загрузка моделей
         resetChatHtml();
         resetGeneralChatHtml();
         resetAgentLogHtml();
@@ -358,7 +357,7 @@ public class MainController {
     }
 
     /**
-     * РџРѕР»СѓС‡РёС‚СЊ РІС‹Р±СЂР°РЅРЅСѓСЋ РјРѕРґРµР»СЊ РґР»СЏ РІРєР»Р°РґРєРё СЃРєР°РЅРёСЂРѕРІР°РЅРёСЏ
+     * Получить выбранную модель для вкладки сканирования
      */
     private String getSelectedScanModel() {
         if (scanModelComboBox != null && scanModelComboBox.getValue() != null && !scanModelComboBox.getValue().isBlank()) {
@@ -371,13 +370,13 @@ public class MainController {
     }
 
     // ==========================================
-    // Р›РћР“РРљРђ Р’РљР›РђР”РљР РР-РђР“Р•РќРўРђ
+    // ЛОГИКА ВКЛАДКИ ИИ-АГЕНТА
     // ==========================================
 
     @FXML
     private void handleAgentSelectFolder() {
         DirectoryChooser directoryChooser = new DirectoryChooser();
-        directoryChooser.setTitle("Р’С‹Р±РµСЂРёС‚Рµ СЂР°Р±РѕС‡СѓСЋ РїР°РїРєСѓ РґР»СЏ СЃРѕР·РґР°РЅРёСЏ РїСЂРѕРµРєС‚Р°");
+        directoryChooser.setTitle("Выберите рабочую папку для создания проекта");
 
         Stage stage = (Stage) agentSelectFolderButton.getScene().getWindow();
         File folder = directoryChooser.showDialog(stage);
@@ -391,7 +390,7 @@ public class MainController {
     @FXML
     private void handleSelectBenchmarkFolder() {
         DirectoryChooser chooser = new DirectoryChooser();
-        chooser.setTitle("Р’С‹Р±РµСЂРёС‚Рµ РґРёСЂРµРєС‚РѕСЂРёСЋ СЃ Р±РµРЅС‡РјР°СЂРє-С„Р°Р№Р»Р°РјРё");
+        chooser.setTitle("Выберите директорию с бенчмарк-файлами");
         Stage stage = (Stage) selectBenchmarkFolderButton.getScene().getWindow();
         File dir = chooser.showDialog(stage);
         if (dir != null) {
@@ -403,19 +402,19 @@ public class MainController {
     @FXML
     private void handleStartBenchmark() {
         if (benchmarkFolder == null || !benchmarkFolder.exists()) {
-            new Alert(Alert.AlertType.WARNING, "РЎРЅР°С‡Р°Р»Р° СѓРєР°Р¶РёС‚Рµ РїР°РїРєСѓ СЃ С‚РµСЃС‚РѕРІС‹РјРё С„Р°Р№Р»Р°РјРё!").showAndWait();
+            new Alert(Alert.AlertType.WARNING, "Сначала укажите папку с тестовыми файлами!").showAndWait();
             return;
         }
 
         File[] files = benchmarkFolder.listFiles(f -> f.isFile() && !f.getName().startsWith("."));
         if (files == null || files.length == 0) {
-            new Alert(Alert.AlertType.WARNING, "Р’ РІС‹Р±СЂР°РЅРЅРѕР№ РїР°РїРєРµ РЅРµС‚ РїРѕРґС…РѕРґСЏС‰РёС… С„Р°Р№Р»РѕРІ!").showAndWait();
+            new Alert(Alert.AlertType.WARNING, "В выбранной папке нет подходящих файлов!").showAndWait();
             return;
         }
 
         List<String> models = ollamaClient.getAvailableModels();
         if (models.isEmpty()) {
-            new Alert(Alert.AlertType.WARNING, "Р’ Ollama РЅРµ РЅР°Р№РґРµРЅРѕ Р°РєС‚РёРІРЅС‹С… РјРѕРґРµР»РµР№!").showAndWait();
+            new Alert(Alert.AlertType.WARNING, "В Ollama не найдено активных моделей!").showAndWait();
             return;
         }
 
@@ -436,7 +435,7 @@ public class MainController {
 
         task.setOnFailed(e -> {
             startBenchmarkButton.setDisable(false);
-            new Alert(Alert.AlertType.ERROR, "РћС€РёР±РєР° РІС‹РїРѕР»РЅРµРЅРёСЏ Р±РµРЅС‡РјР°СЂРєР°: " + task.getException().getMessage()).showAndWait();
+            new Alert(Alert.AlertType.ERROR, "Ошибка выполнения бенчмарка: " + task.getException().getMessage()).showAndWait();
         });
 
         Thread thread = new Thread(task);
@@ -451,19 +450,19 @@ public class MainController {
         String selectedModel = (agentModelComboBox != null) ? agentModelComboBox.getValue() : null;
 
         if (folderPath.isEmpty()) {
-            Alert alert = new Alert(Alert.AlertType.WARNING, "РџРѕР¶Р°Р»СѓР№СЃС‚Р°, РІС‹Р±РµСЂРёС‚Рµ СЂР°Р±РѕС‡СѓСЋ РїР°РїРєСѓ!");
+            Alert alert = new Alert(Alert.AlertType.WARNING, "Пожалуйста, выберите рабочую папку!");
             alert.showAndWait();
             return;
         }
 
         if (prompt.isEmpty()) {
-            Alert alert = new Alert(Alert.AlertType.WARNING, "РџРѕР¶Р°Р»СѓР№СЃС‚Р°, РѕРїРёС€РёС‚Рµ Р·Р°РґР°С‡Сѓ РґР»СЏ Р°РіРµРЅС‚Р°!");
+            Alert alert = new Alert(Alert.AlertType.WARNING, "Пожалуйста, опишите задачу для агента!");
             alert.showAndWait();
             return;
         }
 
         if (selectedModel == null || selectedModel.isEmpty()) {
-            Alert alert = new Alert(Alert.AlertType.WARNING, "РџРѕР¶Р°Р»СѓР№СЃС‚Р°, РІС‹Р±РµСЂРёС‚Рµ РјРѕРґРµР»СЊ РґР»СЏ РіРµРЅРµСЂР°С†РёРё!");
+            Alert alert = new Alert(Alert.AlertType.WARNING, "Пожалуйста, выберите модель для генерации!");
             alert.showAndWait();
             return;
         }
@@ -492,7 +491,7 @@ public class MainController {
         agentTask.setOnSucceeded(e -> agentStartButton.setDisable(false));
         agentTask.setOnFailed(e -> {
             agentStartButton.setDisable(false);
-            appendAgentLog("вќЊ **РџСЂРѕРёР·РѕС€Р»Р° РѕС€РёР±РєР° РїСЂРё СЂР°Р±РѕС‚Рµ Р°РіРµРЅС‚Р°:** " + agentTask.getException().getMessage());
+            appendAgentLog("❌ **Произошла ошибка при работе агента:** " + agentTask.getException().getMessage());
         });
 
         Thread thread = new Thread(agentTask);
@@ -501,14 +500,14 @@ public class MainController {
     }
 
     // ==========================================
-    // Р›РћР“РРљРђ РЎР’РћР‘РћР”РќРћР“Рћ Р§РђРўРђ
+    // ЛОГИКА СВОБОДНОГО ЧАТА
     // ==========================================
 
     @FXML
     private void handleClearGeneralChat() {
         generalChatHistory.clear();
         resetGeneralChatHtml();
-        appendGeneralChatMessage("РЎРёСЃС‚РµРјР°", "рџ§№ **Р§Р°С‚ Рё РєРѕРЅС‚РµРєСЃС‚ РґРёР°Р»РѕРіР° СѓСЃРїРµС€РЅРѕ СЃР±СЂРѕС€РµРЅС‹.**");
+        appendGeneralChatMessage("Система", "🧹 **Чат и контекст диалога успешно сброшены.**");
     }
 
     private void handleSendGeneralChatPrompt() {
@@ -520,12 +519,12 @@ public class MainController {
         if (prompt.isEmpty()) return;
 
         if (selectedModel == null || selectedModel.isEmpty()) {
-            Alert alert = new Alert(Alert.AlertType.WARNING, "РџРѕР¶Р°Р»СѓР№СЃС‚Р°, РІС‹Р±РµСЂРёС‚Рµ РјРѕРґРµР»СЊ РґР»СЏ РѕР±С‰РµРЅРёСЏ!");
+            Alert alert = new Alert(Alert.AlertType.WARNING, "Пожалуйста, выберите модель для общения!");
             alert.showAndWait();
             return;
         }
 
-        appendGeneralChatMessage("Р’С‹", prompt);
+        appendGeneralChatMessage("Вы", prompt);
         generalChatHistory.add(new ChatMessage("user", prompt));
 
         generalChatPromptInput.clear();
@@ -543,12 +542,12 @@ public class MainController {
             String response = chatTask.getValue();
 
             generalChatHistory.add(new ChatMessage("assistant", response));
-            appendGeneralChatMessage("РР (" + selectedModel + ")", response);
+            appendGeneralChatMessage("ИИ (" + selectedModel + ")", response);
         });
 
         chatTask.setOnFailed(e -> {
             if (sendGeneralChatPromptButton != null) sendGeneralChatPromptButton.setDisable(false);
-            appendGeneralChatMessage("РЎРёСЃС‚РµРјР°", "вќЊ **РћС€РёР±РєР° РІР·Р°РёРјРѕРґРµР№СЃС‚РІРёСЏ СЃ РјРѕРґРµР»СЊСЋ.**");
+            appendGeneralChatMessage("Система", "❌ **Ошибка взаимодействия с моделью.**");
         });
 
         Thread thread = new Thread(chatTask);
@@ -557,7 +556,7 @@ public class MainController {
     }
 
     // ==========================================
-    // Р›РћР“РРљРђ РђРќРђР›РР—Рђ РљРћР”Рђ Р РЎРљРђРќР•Р Рђ
+    // ЛОГИКА АНАЛИЗА КОДА И СКАНЕРА
     // ==========================================
 
     private void handleSelectAllToggle() {
@@ -579,7 +578,7 @@ public class MainController {
 
     private void handleSelectFolderClick() {
         DirectoryChooser directoryChooser = new DirectoryChooser();
-        directoryChooser.setTitle("Р’С‹Р±РµСЂРёС‚Рµ РїР°РїРєСѓ СЃ РёСЃС…РѕРґРЅС‹Рј РєРѕРґРѕРј");
+        directoryChooser.setTitle("Выберите папку с исходным кодом");
         Stage stage = (Stage) selectFolderButton.getScene().getWindow();
         File folder = directoryChooser.showDialog(stage);
 
@@ -588,7 +587,7 @@ public class MainController {
             lastScanResult = null;
             buildFileTree(folder);
             scanButton.setDisable(false);
-            appendMessageToChatHtml("РЎРёСЃС‚РµРјР°", "рџ“Ѓ Р—Р°РіСЂСѓР¶РµРЅ РїСЂРѕРµРєС‚: `" + folder.getName() + "`.");
+            appendMessageToChatHtml("Система", "📁 Загружен проект: `" + folder.getName() + "`.");
         }
     }
 
@@ -602,7 +601,7 @@ public class MainController {
         resetChatHtml();
         resetGeneralChatHtml();
         generalChatHistory.clear();
-        appendMessageToChatHtml("РЎРёСЃС‚РµРјР°", "рџ§№ РџСЂРѕРµРєС‚ Рё СЂРµР·СѓР»СЊС‚Р°С‚С‹ Р°РЅР°Р»РёР·Р° РѕС‡РёС‰РµРЅС‹.");
+        appendMessageToChatHtml("Система", "🧹 Проект и результаты анализа очищены.");
     }
 
     private void buildFileTree(File rootFolder) {
@@ -622,7 +621,7 @@ public class MainController {
                 for (File child : files) {
                     String name = child.getName().toLowerCase();
 
-                    // Р¤РёР»СЊС‚СЂСѓРµРј СЃР»СѓР¶РµР±РЅС‹Рµ РґРёСЂРµРєС‚РѕСЂРёРё Рё Р±РёРЅР°СЂРЅС‹Рµ РєР»Р°СЃСЃС‹
+                    // Фильтруем служебные директории и бинарные классы
                     if (!name.startsWith(".")
                             && !name.equalsIgnoreCase("target")
                             && !name.equalsIgnoreCase("build")
@@ -641,14 +640,14 @@ public class MainController {
         if (fileTreeView == null || fileTreeView.getRoot() == null) return;
         File projectFolder = fileTreeView.getRoot().getValue();
         if (projectFolder == null || !projectFolder.isDirectory()) {
-            new Alert(Alert.AlertType.WARNING, "РЎРЅР°С‡Р°Р»Р° РІС‹Р±РµСЂРёС‚Рµ РїР°РїРєСѓ РїСЂРѕРµРєС‚Р°.").showAndWait();
+            new Alert(Alert.AlertType.WARNING, "Сначала выберите папку проекта.").showAndWait();
             return;
         }
 
         List<File> selectedFiles = new ArrayList<>();
         collectSelectedFiles((CheckBoxTreeItem<File>) fileTreeView.getRoot(), selectedFiles);
         if (selectedFiles.isEmpty()) {
-            new Alert(Alert.AlertType.WARNING, "Р’С‹ РЅРµ РІС‹Р±СЂР°Р»Рё РЅРё РѕРґРЅРѕРіРѕ С„Р°Р№Р»Р°!").showAndWait();
+            new Alert(Alert.AlertType.WARNING, "Вы не выбрали ни одного файла!").showAndWait();
             return;
         }
         String targetModel = getSelectedScanModel();
@@ -661,9 +660,9 @@ public class MainController {
         selectFolderButton.setDisable(true);
         if (clearButton != null) clearButton.setDisable(true);
         if (importSemgrepButton != null) importSemgrepButton.setDisable(true);
-        scanButton.setText("LLM + Semgrep: РёРґС‘С‚ Р°РЅР°Р»РёР·...");
-        appendMessageToChatHtml("РЎРёСЃС‚РµРјР°", "рџ”Ќ **Р—Р°РїСѓС‰РµРЅС‹ Semgrep Рё LLM.** РњРѕРґРµР»СЊ: `"
-                + targetModel + "`. РСЃС…РѕРґРЅС‹Р№ РєРѕРґ РЅРµ Р·Р°РїСѓСЃРєР°РµС‚СЃСЏ; Semgrep СЂР°Р±РѕС‚Р°РµС‚ РІ РѕС‚РґРµР»СЊРЅРѕРј РїСЂРѕС†РµСЃСЃРµ.");
+        scanButton.setText("LLM + Semgrep: идёт анализ...");
+        appendMessageToChatHtml("Система", "🔍 **Запущены Semgrep и LLM.** Модель: `"
+                + targetModel + "`. Исходный код не запускается; Semgrep работает в отдельном процессе.");
 
         Task<UnifiedScanService.ScanResult> task = new Task<>() {
             @Override
@@ -685,32 +684,32 @@ public class MainController {
                         .findFirst().ifPresent(this::showVulnerabilitiesForFile);
             }
             String status = result.sastCompleted() && result.failedByLlm() == 0 && result.partialByLlm() == 0
-                    && result.diagnostics().isEmpty() ? "вњ… РџСЂРѕРІРµСЂРєР° Р·Р°РІРµСЂС€РµРЅР°" : "вљ пёЏ РџСЂРѕРІРµСЂРєР° Р·Р°РІРµСЂС€РµРЅР° СЃ РѕРіСЂР°РЅРёС‡РµРЅРёСЏРјРё";
+                    && result.diagnostics().isEmpty() ? "✅ Проверка завершена" : "⚠️ Проверка завершена с ограничениями";
             StringBuilder summary = new StringBuilder(status)
-                    .append(". Р¤Р°Р№Р»РѕРІ Р·Р°РіСЂСѓР¶РµРЅРѕ: ").append(result.files().size())
-                    .append(". LLM СѓСЃРїРµС€РЅРѕ РїСЂРѕРІРµСЂРёР»Р°: ").append(result.analyzedByLlm())
-                    .append(", РЅРµРїРѕР»РЅС‹С… LLM: ").append(result.partialByLlm())
-                    .append(", РѕС€РёР±РѕРє LLM: ").append(result.failedByLlm())
+                    .append(". Файлов загружено: ").append(result.files().size())
+                    .append(". LLM успешно проверила: ").append(result.analyzedByLlm())
+                    .append(", неполных LLM: ").append(result.partialByLlm())
+                    .append(", ошибок LLM: ").append(result.failedByLlm())
                     .append(". Semgrep: ").append(result.sastCompleted()
-                            ? result.sastFindings() + " СЃСЂР°Р±Р°С‚С‹РІР°РЅРёР№" : "РЅРµ РІС‹РїРѕР»РЅРµРЅ")
-                    .append(". РР-СЂРµРІСЊСЋ SAST: ").append(result.aiReviewed())
-                    .append(" РѕС†РµРЅРµРЅРѕ, ").append(result.aiReviewFailed()).append(" РѕС€РёР±РѕРє, ")
-                    .append(result.aiReviewSkipped()).append(" РїСЂРѕРїСѓС‰РµРЅРѕ")
-                    .append(". Р’РѕР·РјРѕР¶РЅС‹С… СЃРѕРІРїР°РґРµРЅРёР№ СЃС‚СЂРѕРє: ").append(result.possibleOverlaps())
-                    .append(". РџСЂРѕРїСѓС‰РµРЅРѕ С„Р°Р№Р»РѕРІ: ").append(result.skippedTargets())
-                    .append(". РќРµСЃРѕРїРѕСЃС‚Р°РІР»РµРЅРЅС‹С… SAST-РЅР°С…РѕРґРѕРє: ").append(result.unrelatedFindings())
-                    .append(".\n\n**Р’Р°Р¶РЅРѕ:** СЃРѕРІРїР°РґРµРЅРёРµ СЃС‚СЂРѕРє РЅРµ РїРѕРґС‚РІРµСЂР¶РґР°РµС‚ СѓСЏР·РІРёРјРѕСЃС‚СЊ; РѕС‚СЃСѓС‚СЃС‚РІРёРµ РЅР°С…РѕРґРѕРє РЅРµ РіР°СЂР°РЅС‚РёСЂСѓРµС‚ Р±РµР·РѕРїР°СЃРЅРѕСЃС‚СЊ.");
+                            ? result.sastFindings() + " срабатываний" : "не выполнен")
+                    .append(". ИИ-ревью SAST: ").append(result.aiReviewed())
+                    .append(" оценено, ").append(result.aiReviewFailed()).append(" ошибок, ")
+                    .append(result.aiReviewSkipped()).append(" пропущено")
+                    .append(". Возможных совпадений строк: ").append(result.possibleOverlaps())
+                    .append(". Пропущено файлов: ").append(result.skippedTargets())
+                    .append(". Несопоставленных SAST-находок: ").append(result.unrelatedFindings())
+                    .append(".\n\n**Важно:** совпадение строк не подтверждает уязвимость; отсутствие находок не гарантирует безопасность.");
             for (String diagnostic : result.diagnostics()) {
-                summary.append("\n\nвљ пёЏ ").append(escapeHtml(diagnostic));
+                summary.append("\n\n⚠️ ").append(escapeHtml(diagnostic));
             }
-            appendMessageToChatHtml("РЎРёСЃС‚РµРјР°", summary.toString());
+            appendMessageToChatHtml("Система", summary.toString());
         });
         task.setOnFailed(e -> {
             finishUnifiedScan();
             Throwable error = task.getException();
-            appendMessageToChatHtml("РЎРёСЃС‚РµРјР°", "вќЊ **РћС€РёР±РєР° Р°РЅР°Р»РёР·Р°:** "
-                    + (error == null ? "РЅРµРёР·РІРµСЃС‚РЅР°СЏ РѕС€РёР±РєР°" : escapeHtml(error.getMessage()))
-                    + "\n\nР РµР·СѓР»СЊС‚Р°С‚ РЅРµР»СЊР·СЏ РёРЅС‚РµСЂРїСЂРµС‚РёСЂРѕРІР°С‚СЊ РєР°Рє РѕС‚СЃСѓС‚СЃС‚РІРёРµ СѓСЏР·РІРёРјРѕСЃС‚РµР№.");
+            appendMessageToChatHtml("Система", "❌ **Ошибка анализа:** "
+                    + (error == null ? "неизвестная ошибка" : escapeHtml(error.getMessage()))
+                    + "\n\nРезультат нельзя интерпретировать как отсутствие уязвимостей.");
         });
         Thread thread = new Thread(task, "unified-security-scan");
         thread.setDaemon(true);
@@ -722,7 +721,7 @@ public class MainController {
         selectFolderButton.setDisable(false);
         if (clearButton != null) clearButton.setDisable(false);
         if (importSemgrepButton != null) importSemgrepButton.setDisable(false);
-        scanButton.setText("рџљЂ Р—Р°РїСѓСЃС‚РёС‚СЊ Р°РЅР°Р»РёР· РІС‹Р±СЂР°РЅРЅС‹С…");
+        scanButton.setText("🚀 Запустить анализ выбранных");
     }
 
     private void collectSelectedFiles(CheckBoxTreeItem<File> item, List<File> result) {
@@ -745,7 +744,7 @@ public class MainController {
     private void showVulnerabilityDetails(Vulnerability vulnerability) {
         resetChatHtml();
         String markdownReport = String.format(
-                "### вљ пёЏ %s\n\n**РљСЂРёС‚РёС‡РЅРѕСЃС‚СЊ:** `%s`  \n**РЎС‚СЂРѕРєРё:** `%s`  \n**РЎС‚Р°С‚СѓСЃ:** %s\n\n**РџРѕСЏСЃРЅРµРЅРёРµ:** %s\n\n**РР-СЂРµРІСЊСЋ:** %s\n\n**РћР±РѕСЃРЅРѕРІР°РЅРёРµ РР:** %s\n\n#### РћРїРёСЃР°РЅРёРµ:\n%s\n\n#### Р РµРєРѕРјРµРЅРґР°С†РёСЏ:\n%s",
+                "### ⚠️ %s\n\n**Критичность:** `%s`  \n**Строки:** `%s`  \n**Статус:** %s\n\n**Пояснение:** %s\n\n**ИИ-ревью:** %s\n\n**Обоснование ИИ:** %s\n\n#### Описание:\n%s\n\n#### Рекомендация:\n%s",
                 escapeHtml(vulnerability.getTitle()), escapeHtml(vulnerability.getSeverity()),
                 escapeHtml(vulnerability.getLineRange()),
                 escapeHtml(vulnerability.getValidationStatusLabel()),
@@ -759,9 +758,9 @@ public class MainController {
         }
         if (vulnerability.getCweAdvisorStatus() != null
                 && !"NOT_ASSESSED".equals(vulnerability.getCweAdvisorStatus())) {
-            markdownReport += "\n\n**РћС†РµРЅРєР° CWE РїРѕ РєРѕРґСѓ:** `" + escapeHtml(vulnerability.getCweAdvisorStatus()) + "`";
+            markdownReport += "\n\n**Оценка CWE по коду:** `" + escapeHtml(vulnerability.getCweAdvisorStatus()) + "`";
             if (vulnerability.getCweSuggestion() != null) {
-                markdownReport += "\n\n**РџСЂРµРґР»Р°РіР°РµРјР°СЏ РєР°С‚РµРіРѕСЂРёСЏ (РЅРµ РґРёР°РіРЅРѕР·):** `"
+                markdownReport += "\n\n**Предлагаемая категория (не диагноз):** `"
                         + escapeHtml(vulnerability.getCweSuggestion()) + "`";
             }
             if (vulnerability.getCweAdvisorNote() != null) {
@@ -770,35 +769,35 @@ public class MainController {
         }
         if (vulnerability.getSemanticStatus() != null
                 && !"NOT_ASSESSED".equals(vulnerability.getSemanticStatus())) {
-            markdownReport += "\n\n**РџСЂРѕРІРµСЂРєР° CWE:** `" + escapeHtml(vulnerability.getSemanticStatus()) + "`";
+            markdownReport += "\n\n**Проверка CWE:** `" + escapeHtml(vulnerability.getSemanticStatus()) + "`";
             if (vulnerability.getSemanticNote() != null) {
                 markdownReport += "\n\n" + escapeHtml(vulnerability.getSemanticNote());
             }
         }
         if (vulnerability.getMechanismStatus() != null
                 && !"NOT_ASSESSED".equals(vulnerability.getMechanismStatus())) {
-            markdownReport += "\n\n**РџСЂРѕРІРµСЂРєР° РјРµС…Р°РЅРёР·РјР°:** `" + escapeHtml(vulnerability.getMechanismStatus()) + "`";
+            markdownReport += "\n\n**Проверка механизма:** `" + escapeHtml(vulnerability.getMechanismStatus()) + "`";
             if (vulnerability.getMechanismNote() != null) {
                 markdownReport += "\n\n" + escapeHtml(vulnerability.getMechanismNote());
             }
         }
         if (vulnerability.getEvidence() != null) {
-            markdownReport += "\n\n**Р¦РёС‚Р°С‚Р° РёСЃС…РѕРґРЅРѕРіРѕ РєРѕРґР° (LLM):** `"
+            markdownReport += "\n\n**Цитата исходного кода (LLM):** `"
                     + escapeHtml(vulnerability.getEvidence().replace("`", "'")) + "`";
         }
         if (vulnerability.getModelOutputStatus() != null
                 && !"NOT_ASSESSED".equals(vulnerability.getModelOutputStatus())) {
-            markdownReport += "\n\n**РљР°С‡РµСЃС‚РІРѕ РѕС‚РІРµС‚Р° LLM:** `"
+            markdownReport += "\n\n**Качество ответа LLM:** `"
                     + escapeHtml(vulnerability.getModelOutputStatus()) + "`";
             if (vulnerability.getModelOutputNote() != null) {
                 markdownReport += "\n\n" + escapeHtml(vulnerability.getModelOutputNote());
             }
         }
         if (vulnerability.getSourceExcerpt() != null) {
-            markdownReport += "\n\n**РСЃС…РѕРґРЅР°СЏ СЃС‚СЂРѕРєР° (РґР»СЏ СЂСѓС‡РЅРѕР№ СЃРІРµСЂРєРё, РЅРµ РґРѕРєР°Р·Р°С‚РµР»СЊСЃС‚РІРѕ):** `"
+            markdownReport += "\n\n**Исходная строка (для ручной сверки, не доказательство):** `"
                     + escapeHtml(vulnerability.getSourceExcerpt().replace("`", "'")) + "`";
         }
-        appendMessageToChatHtml("РР-РђРЅР°Р»РёР·Р°С‚РѕСЂ", markdownReport);
+        appendMessageToChatHtml("ИИ-Анализатор", markdownReport);
     }
 
     /**
@@ -807,16 +806,16 @@ public class MainController {
      */
     private void handleImportSemgrepClick() {
         if (fileTreeView == null || fileTreeView.getRoot() == null) {
-            new Alert(Alert.AlertType.WARNING, "РЎРЅР°С‡Р°Р»Р° РІС‹Р±РµСЂРёС‚Рµ РїР°РїРєСѓ РїСЂРѕРµРєС‚Р°.").showAndWait();
+            new Alert(Alert.AlertType.WARNING, "Сначала выберите папку проекта.").showAndWait();
             return;
         }
         File projectFolder = fileTreeView.getRoot().getValue();
         if (projectFolder == null || !projectFolder.isDirectory()) {
-            new Alert(Alert.AlertType.WARNING, "РЎРЅР°С‡Р°Р»Р° РІС‹Р±РµСЂРёС‚Рµ РїР°РїРєСѓ РїСЂРѕРµРєС‚Р°.").showAndWait();
+            new Alert(Alert.AlertType.WARNING, "Сначала выберите папку проекта.").showAndWait();
             return;
         }
         FileChooser chooser = new FileChooser();
-        chooser.setTitle("РћС‚РєСЂС‹С‚СЊ JSON-РѕС‚С‡С‘С‚ Semgrep");
+        chooser.setTitle("Открыть JSON-отчёт Semgrep");
         chooser.getExtensionFilters().add(
                 new FileChooser.ExtensionFilter("JSON files (*.json)", "*.json"));
         File preferred = new File(projectFolder, "semgrep-results.json");
@@ -828,7 +827,7 @@ public class MainController {
         try {
             report = semgrepReportService.read(file.toPath());
         } catch (IOException ex) {
-            new Alert(Alert.AlertType.ERROR, "РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРѕС‡РёС‚Р°С‚СЊ Semgrep JSON: " + ex.getMessage()).showAndWait();
+            new Alert(Alert.AlertType.ERROR, "Не удалось прочитать Semgrep JSON: " + ex.getMessage()).showAndWait();
             return;
         }
         // Validate all source paths before updating the UI, to avoid half-imports.
@@ -852,8 +851,8 @@ public class MainController {
             for (Vulnerability v : sf.getVulnerabilities()) {
                 if ("POSSIBLE_SAST_MATCH".equals(v.getValidationStatus())) {
                     v.setValidationStatus("LOCATION_CHECKED");
-                    v.setValidationNote("РРјРїРѕСЂС‚РёСЂРѕРІР°РЅ РЅРѕРІС‹Р№ РѕС‚С‡С‘С‚ Semgrep; СЃС‚Р°СЂРѕРµ СЃРѕРІРїР°РґРµРЅРёРµ СЃР±СЂРѕС€РµРЅРѕ. "
-                            + "РџСЂРѕРІРµСЂРєР° РєРѕРѕСЂРґРёРЅР°С‚ LLM РЅРµ РїРѕРґС‚РІРµСЂР¶РґР°РµС‚ СѓСЏР·РІРёРјРѕСЃС‚СЊ.");
+                    v.setValidationNote("Импортирован новый отчёт Semgrep; старое совпадение сброшено. "
+                            + "Проверка координат LLM не подтверждает уязвимость.");
                 }
             }
         }
@@ -885,13 +884,13 @@ public class MainController {
                     && sf.getPath().toAbsolutePath().normalize().equals(selectedFile.toPath().toAbsolutePath().normalize()))
                     .findFirst().ifPresent(this::showVulnerabilitiesForFile);
         }
-        String summary = "Semgrep: РІ РѕС‚С‡С‘С‚Рµ " + report.findings().size() + " СЃСЂР°Р±Р°С‚С‹РІР°РЅРёР№, "
-                + "РёРјРїРѕСЂС‚РёСЂРѕРІР°РЅРѕ " + imported + ", РЅРµ СЃРѕРїРѕСЃС‚Р°РІР»РµРЅРѕ СЃ РїСЂРѕРµРєС‚РѕРј " + missing
-                + ", РґРёР°РіРЅРѕСЃС‚РёС‡РµСЃРєРёС… РѕС€РёР±РѕРє " + report.errors().size() + ".";
-        appendMessageToChatHtml("РЎРёСЃС‚РµРјР°", summary + "\n\n**Р’РЅРёРјР°РЅРёРµ:** РЎРµРјРіСЂРµРї-РЅР°С…РѕРґРєРё РЅРµ РїРѕРґС‚РІРµСЂР¶РґР°СЋС‚ "
-                + "СЌРєСЃРїР»СѓР°С‚РёСЂСѓРµРјРѕСЃС‚СЊ; РЅРѕР»СЊ РЅР°С…РѕРґРѕРє РЅРµ РіР°СЂР°РЅС‚РёСЂСѓРµС‚ РѕС‚СЃСѓС‚СЃС‚РІРёРµ СѓСЏР·РІРёРјРѕСЃС‚РµР№.");
+        String summary = "Semgrep: в отчёте " + report.findings().size() + " срабатываний, "
+                + "импортировано " + imported + ", не сопоставлено с проектом " + missing
+                + ", диагностических ошибок " + report.errors().size() + ".";
+        appendMessageToChatHtml("Система", summary + "\n\n**Внимание:** Семгреп-находки не подтверждают "
+                + "эксплуатируемость; ноль находок не гарантирует отсутствие уязвимостей.");
         if (missing > 0 || report.hasErrors()) {
-            new Alert(Alert.AlertType.WARNING, summary + "\nРџСЂРѕРІРµСЂСЊС‚Рµ РїРѕР»РЅРѕС‚Сѓ РѕС‚С‡С‘С‚Р° Рё РїСѓС‚Рё Рє С„Р°Р№Р»Р°Рј.").showAndWait();
+            new Alert(Alert.AlertType.WARNING, summary + "\nПроверьте полноту отчёта и пути к файлам.").showAndWait();
         } else {
             new Alert(Alert.AlertType.INFORMATION, summary).showAndWait();
         }
@@ -904,11 +903,11 @@ public class MainController {
 
     private void handleExportResultsClick() {
         if (scannedFiles.isEmpty()) {
-            new Alert(Alert.AlertType.WARNING, "РЎРЅР°С‡Р°Р»Р° РїСЂРѕСЃРєР°РЅРёСЂСѓР№С‚Рµ РїСЂРѕРµРєС‚ РёР»Рё РёРјРїРѕСЂС‚РёСЂСѓР№С‚Рµ РѕС‚С‡С‘С‚.").showAndWait();
+            new Alert(Alert.AlertType.WARNING, "Сначала просканируйте проект или импортируйте отчёт.").showAndWait();
             return;
         }
         FileChooser chooser = new FileChooser();
-        chooser.setTitle("Р­РєСЃРїРѕСЂС‚ РЅРµРѕР±СЂР°Р±РѕС‚Р°РЅРЅС‹С… СЂРµР·СѓР»СЊС‚Р°С‚РѕРІ (РІРѕР·РјРѕР¶РЅС‹ С„СЂР°РіРјРµРЅС‚С‹ СЃРµРєСЂРµС‚РѕРІ)");
+        chooser.setTitle("Экспорт необработанных результатов (возможны фрагменты секретов)");
         FileChooser.ExtensionFilter json = new FileChooser.ExtensionFilter("JSON (*.json)", "*.json");
         FileChooser.ExtensionFilter csv = new FileChooser.ExtensionFilter("CSV (*.csv)", "*.csv");
         chooser.getExtensionFilters().addAll(json, csv);
@@ -926,22 +925,22 @@ public class MainController {
         try {
             if (asCsv) scanExportService.writeCsv(destination, List.copyOf(scannedFiles), lastScanResult);
             else scanExportService.writeJson(destination, List.copyOf(scannedFiles), lastScanResult, lastScanModel);
-            new Alert(Alert.AlertType.INFORMATION, "Р­РєСЃРїРѕСЂС‚ СЃРѕС…СЂР°РЅС‘РЅ. РќРµ РїСѓР±Р»РёРєСѓР№С‚Рµ С„Р°Р№Р» Р±РµР· РїСЂРѕРІРµСЂРєРё СЃРµРєСЂРµС‚РѕРІ.")
+            new Alert(Alert.AlertType.INFORMATION, "Экспорт сохранён. Не публикуйте файл без проверки секретов.")
                     .showAndWait();
         } catch (IOException ex) {
-            new Alert(Alert.AlertType.ERROR, "РћС€РёР±РєР° СЌРєСЃРїРѕСЂС‚Р°: " + ex.getMessage()).showAndWait();
+            new Alert(Alert.AlertType.ERROR, "Ошибка экспорта: " + ex.getMessage()).showAndWait();
         }
     }
 
     private void handleExportPdfClick() {
         if (scannedFiles.isEmpty()) {
-            Alert alert = new Alert(Alert.AlertType.WARNING, "РЎРЅР°С‡Р°Р»Р° РЅРµРѕР±С…РѕРґРёРјРѕ РїСЂРѕСЃРєР°РЅРёСЂРѕРІР°С‚СЊ РїСЂРѕРµРєС‚!");
+            Alert alert = new Alert(Alert.AlertType.WARNING, "Сначала необходимо просканировать проект!");
             alert.showAndWait();
             return;
         }
 
         FileChooser fileChooser = new FileChooser();
-        fileChooser.setTitle("РЎРѕС…СЂР°РЅРёС‚СЊ PDF РѕС‚С‡РµС‚");
+        fileChooser.setTitle("Сохранить PDF отчет");
         fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Documents (*.pdf)", "*.pdf"));
         fileChooser.setInitialFileName("security_report.pdf");
 
@@ -951,18 +950,18 @@ public class MainController {
         if (saveFile != null) {
             try {
                 String coverage = lastScanResult == null ?
-                        "РЎРѕСЃС‚РѕСЏРЅРёРµ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРѕР№ РїСЂРѕРІРµСЂРєРё РЅРµРёР·РІРµСЃС‚РЅРѕ (РІРѕР·РјРѕР¶РµРЅ СЂСѓС‡РЅРѕР№ РёРјРїРѕСЂС‚)." :
-                        "LLM: " + lastScanResult.analyzedByLlm() + " С„Р°Р№Р»РѕРІ СѓСЃРїРµС€РЅРѕ, "
-                        + lastScanResult.failedByLlm() + " РѕС€РёР±РѕРє, "
-                        + lastScanResult.partialByLlm() + " РЅРµРїРѕР»РЅС‹С…; Semgrep: "
-                        + (lastScanResult.sastCompleted() ? "Р·Р°РїСѓС‰РµРЅ" : "РЅРµ РІС‹РїРѕР»РЅРµРЅ")
-                        + "; РїСЂРѕРїСѓС‰РµРЅРѕ С„Р°Р№Р»РѕРІ: " + lastScanResult.skippedTargets()
-                        + "; РґРёР°РіРЅРѕСЃС‚РёРє: " + lastScanResult.diagnostics().size() + ".";
+                        "Состояние автоматической проверки неизвестно (возможен ручной импорт)." :
+                        "LLM: " + lastScanResult.analyzedByLlm() + " файлов успешно, "
+                        + lastScanResult.failedByLlm() + " ошибок, "
+                        + lastScanResult.partialByLlm() + " неполных; Semgrep: "
+                        + (lastScanResult.sastCompleted() ? "запущен" : "не выполнен")
+                        + "; пропущено файлов: " + lastScanResult.skippedTargets()
+                        + "; диагностик: " + lastScanResult.diagnostics().size() + ".";
                 pdfReportService.generatePdfReport(scannedFiles, saveFile.getAbsolutePath(), coverage);
-                Alert alert = new Alert(Alert.AlertType.INFORMATION, "PDF-РѕС‚С‡РµС‚ СѓСЃРїРµС€РЅРѕ СЃРѕС…СЂР°РЅРµРЅ!");
+                Alert alert = new Alert(Alert.AlertType.INFORMATION, "PDF-отчет успешно сохранен!");
                 alert.showAndWait();
             } catch (Exception e) {
-                Alert alert = new Alert(Alert.AlertType.ERROR, "РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ PDF-РѕС‚С‡РµС‚: " + e.getMessage());
+                Alert alert = new Alert(Alert.AlertType.ERROR, "Не удалось создать PDF-отчет: " + e.getMessage());
                 alert.showAndWait();
             }
         }
@@ -970,14 +969,14 @@ public class MainController {
 
     private void handlePasteAndAnalyzeCode() {
         Dialog<String> dialog = new Dialog<>();
-        dialog.setTitle("Р‘С‹СЃС‚СЂС‹Р№ Р°РЅР°Р»РёР· РєРѕРґР°");
-        dialog.setHeaderText("Р’СЃС‚Р°РІСЊС‚Рµ С„СЂР°РіРјРµРЅС‚ РєРѕРґР° РґР»СЏ Р°РЅР°Р»РёР·Р° (Ctrl+V)");
+        dialog.setTitle("Быстрый анализ кода");
+        dialog.setHeaderText("Вставьте фрагмент кода для анализа (Ctrl+V)");
 
-        ButtonType analyzeButtonType = new ButtonType("РђРЅР°Р»РёР·РёСЂРѕРІР°С‚СЊ", ButtonBar.ButtonData.OK_DONE);
+        ButtonType analyzeButtonType = new ButtonType("Анализировать", ButtonBar.ButtonData.OK_DONE);
         dialog.getDialogPane().getButtonTypes().addAll(analyzeButtonType, ButtonType.CANCEL);
 
         TextArea textArea = new TextArea();
-        textArea.setPromptText("Р’СЃС‚Р°РІСЊС‚Рµ С„СЂР°РіРјРµРЅС‚ РєРѕРґР° (C, C++, Java, Python, Go)...");
+        textArea.setPromptText("Вставьте фрагмент кода (C, C++, Java, Python, Go)...");
         textArea.setPrefRowCount(15);
         textArea.setPrefColumnCount(60);
         textArea.setWrapText(true);
@@ -1000,7 +999,7 @@ public class MainController {
             SourceFile virtualFile = new SourceFile(snippetName, null, "Unknown", codeContent.getBytes().length, codeContent);
 
             pasteCodeButton.setDisable(true);
-            appendMessageToChatHtml("РЎРёСЃС‚РµРјР°", "вЏі *Р’С‹РїРѕР»РЅСЏРµС‚СЃСЏ СЌРєСЃРїСЂРµСЃСЃ-Р°РЅР°Р»РёР· РјРѕРґРµР»СЊСЋ `" + targetModel + "`...*");
+            appendMessageToChatHtml("Система", "⏳ *Выполняется экспресс-анализ моделью `" + targetModel + "`...*");
 
             Task<List<Vulnerability>> analyzeTask = new Task<>() {
                 @Override
@@ -1016,15 +1015,15 @@ public class MainController {
                 scannedFiles.add(virtualFile);
 
                 if (vulnerabilities.isEmpty()) {
-                    appendMessageToChatHtml("РР-РљРѕРЅСЃСѓР»СЊС‚Р°РЅС‚ (" + targetModel + ")", "вњ… **РЈСЏР·РІРёРјРѕСЃС‚Рё РІРѕ С„СЂР°РіРјРµРЅС‚Рµ РєРѕРґР° РЅРµ РѕР±РЅР°СЂСѓР¶РµРЅС‹!**");
+                    appendMessageToChatHtml("ИИ-Консультант (" + targetModel + ")", "✅ **Уязвимости во фрагменте кода не обнаружены!**");
                 } else {
-                    appendMessageToChatHtml("РР-РљРѕРЅСЃСѓР»СЊС‚Р°РЅС‚ (" + targetModel + ")", "вљ пёЏ **РђРЅР°Р»РёР· Р·Р°РІРµСЂС€РµРЅ!** РћР±РЅР°СЂСѓР¶РµРЅРѕ СѓСЏР·РІРёРјРѕСЃС‚РµР№: **" + vulnerabilities.size() + "**.");
+                    appendMessageToChatHtml("ИИ-Консультант (" + targetModel + ")", "⚠️ **Анализ завершен!** Обнаружено уязвимостей: **" + vulnerabilities.size() + "**.");
                 }
             });
 
             analyzeTask.setOnFailed(e -> {
                 pasteCodeButton.setDisable(false);
-                appendMessageToChatHtml("РЎРёСЃС‚РµРјР°", "вќЊ **РћС€РёР±РєР° РІРѕ РІСЂРµРјСЏ Р°РЅР°Р»РёР·Р° С„СЂР°РіРјРµРЅС‚Р° РєРѕРґР°:** " + analyzeTask.getException().getMessage());
+                appendMessageToChatHtml("Система", "❌ **Ошибка во время анализа фрагмента кода:** " + analyzeTask.getException().getMessage());
             });
 
             Thread thread = new Thread(analyzeTask);
@@ -1041,7 +1040,7 @@ public class MainController {
         if (question.isEmpty()) return;
 
         if (selectedTreeItem == null || selectedTreeItem.getValue() == null || selectedVuln == null) {
-            Alert alert = new Alert(Alert.AlertType.WARNING, "РџРѕР¶Р°Р»СѓР№СЃС‚Р°, РІС‹Р±РµСЂРёС‚Рµ С„Р°Р№Р» РІ РґРµСЂРµРІРµ Рё РєРѕРЅРєСЂРµС‚РЅСѓСЋ СѓСЏР·РІРёРјРѕСЃС‚СЊ РІ С‚Р°Р±Р»РёС†Рµ!");
+            Alert alert = new Alert(Alert.AlertType.WARNING, "Пожалуйста, выберите файл в дереве и конкретную уязвимость в таблице!");
             alert.showAndWait();
             return;
         }
@@ -1054,7 +1053,7 @@ public class MainController {
         if (selectedSourceFile == null) return;
 
         String targetModel = getSelectedScanModel();
-        appendMessageToChatHtml("Р’С‹", question);
+        appendMessageToChatHtml("Вы", question);
         promptInputField.clear();
         sendPromptButton.setDisable(true);
 
@@ -1067,12 +1066,12 @@ public class MainController {
 
         chatTask.setOnSucceeded(e -> {
             sendPromptButton.setDisable(false);
-            appendMessageToChatHtml("РР-РљРѕРЅСЃСѓР»СЊС‚Р°РЅС‚ (" + targetModel + ")", chatTask.getValue());
+            appendMessageToChatHtml("ИИ-Консультант (" + targetModel + ")", chatTask.getValue());
         });
 
         chatTask.setOnFailed(e -> {
             sendPromptButton.setDisable(false);
-            appendMessageToChatHtml("РЎРёСЃС‚РµРјР°", "**РћС€РёР±РєР° РїРѕР»СѓС‡РµРЅРёСЏ РѕС‚РІРµС‚Р° РѕС‚ РР.**");
+            appendMessageToChatHtml("Система", "**Ошибка получения ответа от ИИ.**");
         });
 
         Thread thread = new Thread(chatTask);
@@ -1084,7 +1083,7 @@ public class MainController {
     private void handleFixCurrentFileClick() {
         TreeItem<File> selected = fileTreeView.getSelectionModel().getSelectedItem();
         if (selected == null || selected.getValue() == null) {
-            new Alert(Alert.AlertType.WARNING, "Р’С‹Р±РµСЂРёС‚Рµ С„Р°Р№Р» СЃ СЂРµР·СѓР»СЊС‚Р°С‚Р°РјРё Р°РЅР°Р»РёР·Р°.").showAndWait();
+            new Alert(Alert.AlertType.WARNING, "Выберите файл с результатами анализа.").showAndWait();
             return;
         }
         SourceFile source = scannedFiles.stream()
@@ -1092,14 +1091,14 @@ public class MainController {
                         && sf.getAbsolutePath().equals(selected.getValue().getAbsolutePath()))
                 .findFirst().orElse(null);
         if (source == null || source.getVulnerabilities().isEmpty()) {
-            new Alert(Alert.AlertType.INFORMATION, "Р”Р»СЏ СЌС‚РѕРіРѕ С„Р°Р№Р»Р° РЅРµС‚ РЅР°С…РѕРґРѕРє.").showAndWait();
+            new Alert(Alert.AlertType.INFORMATION, "Для этого файла нет находок.").showAndWait();
             return;
         }
         fixCurrentFileButton.setDisable(true);
         String model = getSelectedScanModel();
-        appendMessageToChatHtml("РЎРёСЃС‚РµРјР°", "Р“РµРЅРµСЂРёСЂСѓРµС‚СЃСЏ **РїСЂРµРґР»РѕР¶РµРЅРёРµ** РёСЃРїСЂР°РІР»РµРЅРёСЏ `"
-                + escapeHtml(source.getName()) + "` (РјРѕРґРµР»СЊ `" + escapeHtml(model) + "`). "
-                + "РСЃС…РѕРґРЅС‹Р№ С„Р°Р№Р» РЅРµ РјРµРЅСЏРµС‚СЃСЏ.");
+        appendMessageToChatHtml("Система", "Генерируется **предложение** исправления `"
+                + escapeHtml(source.getName()) + "` (модель `" + escapeHtml(model) + "`). "
+                + "Исходный файл не меняется.");
         Task<FixProposal> task = new Task<>() {
             @Override protected FixProposal call() throws Exception {
                 return fixRecommendationAgent.propose(source, model);
@@ -1112,8 +1111,8 @@ public class MainController {
         task.setOnFailed(event -> {
             fixCurrentFileButton.setDisable(false);
             Throwable failure = task.getException();
-            appendMessageToChatHtml("РЎРёСЃС‚РµРјР°", "РќРµ СѓРґР°Р»РѕСЃСЊ РїРѕРґРіРѕС‚РѕРІРёС‚СЊ РїСЂРµРґР»РѕР¶РµРЅРёРµ: "
-                    + escapeHtml(failure == null ? "РЅРµРёР·РІРµСЃС‚РЅР°СЏ РѕС€РёР±РєР°" : failure.getMessage()));
+            appendMessageToChatHtml("Система", "Не удалось подготовить предложение: "
+                    + escapeHtml(failure == null ? "неизвестная ошибка" : failure.getMessage()));
         });
         Thread thread = new Thread(task, "fix-proposal");
         thread.setDaemon(true);
@@ -1125,13 +1124,13 @@ public class MainController {
                 .filter(sf -> sf.getPath() != null && !sf.getVulnerabilities().isEmpty())
                 .limit(5).toList();
         if (candidates.isEmpty()) {
-            new Alert(Alert.AlertType.INFORMATION, "РЎРЅР°С‡Р°Р»Р° РїСЂРѕР°РЅР°Р»РёР·РёСЂСѓР№С‚Рµ С„Р°Р№Р»С‹ РїСЂРѕРµРєС‚Р°.").showAndWait();
+            new Alert(Alert.AlertType.INFORMATION, "Сначала проанализируйте файлы проекта.").showAndWait();
             return;
         }
         Alert confirmation = new Alert(Alert.AlertType.CONFIRMATION,
-                "РЎС„РѕСЂРјРёСЂРѕРІР°С‚СЊ РїСЂРµРґР»РѕР¶РµРЅРёСЏ РјР°РєСЃРёРјСѓРј РґР»СЏ " + candidates.size()
-                        + " С„Р°Р№Р»РѕРІ? Р’СЃРµ РїСЂРµРґР»РѕР¶РµРЅРёСЏ Р±СѓРґСѓС‚ РїРѕРєР°Р·Р°РЅС‹ РїРѕ РѕС‡РµСЂРµРґРё; "
-                        + "РѕСЂРёРіРёРЅР°Р»С‹ РЅРµ РёР·РјРµРЅСЏС‚СЃСЏ Рё РЅРёС‡РµРіРѕ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РЅРµ СЃРѕС…СЂР°РЅРёС‚СЃСЏ.",
+                "Сформировать предложения максимум для " + candidates.size()
+                        + " файлов? Все предложения будут показаны по очереди; "
+                        + "оригиналы не изменятся и ничего автоматически не сохранится.",
                 ButtonType.YES, ButtonType.CANCEL);
         if (confirmation.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.YES) return;
         String model = getSelectedScanModel();
@@ -1145,8 +1144,8 @@ public class MainController {
                     } catch (Exception ex) {
                         String filename = sf.getName();
                         String message = ex.getMessage();
-                        Platform.runLater(() -> appendMessageToChatHtml("РЎРёСЃС‚РµРјР°",
-                                "РџСЂРѕРїСѓС‰РµРЅРѕ `" + escapeHtml(filename) + "`: " + escapeHtml(message)));
+                        Platform.runLater(() -> appendMessageToChatHtml("Система",
+                                "Пропущено `" + escapeHtml(filename) + "`: " + escapeHtml(message)));
                     }
                 }
                 return suggestions;
@@ -1155,13 +1154,13 @@ public class MainController {
         task.setOnSucceeded(event -> {
             fixAllButton.setDisable(false);
             List<FixProposal> results = task.getValue();
-            appendMessageToChatHtml("РЎРёСЃС‚РµРјР°", "РЎРѕР·РґР°РЅРѕ РїСЂРµРґР»РѕР¶РµРЅРёР№: " + results.size()
-                    + ". РљР°Р¶РґРѕРµ С‚СЂРµР±СѓРµС‚ РѕС‚РґРµР»СЊРЅРѕРіРѕ РїСЂРѕСЃРјРѕС‚СЂР° Рё СЂРµС€РµРЅРёСЏ Рѕ СЃРѕС…СЂР°РЅРµРЅРёРё.");
+            appendMessageToChatHtml("Система", "Создано предложений: " + results.size()
+                    + ". Каждое требует отдельного просмотра и решения о сохранении.");
             for (FixProposal proposal : results) showFixProposalDialog(proposal);
         });
         task.setOnFailed(event -> {
             fixAllButton.setDisable(false);
-            appendMessageToChatHtml("РЎРёСЃС‚РµРјР°", "РџР°РєРµС‚РЅР°СЏ РіРµРЅРµСЂР°С†РёСЏ РЅРµ Р·Р°РІРµСЂС€РёР»Р°СЃСЊ: "
+            appendMessageToChatHtml("Система", "Пакетная генерация не завершилась: "
                     + escapeHtml(task.getException().getMessage()));
         });
         Thread thread = new Thread(task, "fix-proposal-batch");
@@ -1171,24 +1170,24 @@ public class MainController {
 
     private void showFixProposalDialog(FixProposal proposal) {
         Dialog<Void> dialog = new Dialog<>();
-        dialog.setTitle("Fix Recommendation Agent вЂ” СЂСѓС‡РЅРѕР№ РїСЂРѕСЃРјРѕС‚СЂ");
-        dialog.setHeaderText("РџСЂРµРґР»РѕР¶РµРЅРёРµ РґР»СЏ: " + proposal.sourcePath().getFileName());
-        ButtonType saveType = new ButtonType("РЎРѕС…СЂР°РЅРёС‚СЊ РѕС‚РґРµР»СЊРЅРѕ...", ButtonBar.ButtonData.APPLY);
-        ButtonType checkType = new ButtonType("РџРѕРІС‚РѕСЂРЅРѕ РїСЂРѕРІРµСЂРёС‚СЊ Semgrep", ButtonBar.ButtonData.OTHER);
+        dialog.setTitle("Fix Recommendation Agent — ручной просмотр");
+        dialog.setHeaderText("Предложение для: " + proposal.sourcePath().getFileName());
+        ButtonType saveType = new ButtonType("Сохранить отдельно...", ButtonBar.ButtonData.APPLY);
+        ButtonType checkType = new ButtonType("Повторно проверить Semgrep", ButtonBar.ButtonData.OTHER);
         dialog.getDialogPane().getButtonTypes().addAll(checkType, saveType, ButtonType.CLOSE);
 
         TextArea before = fixPreviewArea(proposal.originalContent());
         TextArea after = fixPreviewArea(proposal.proposedContent());
         TextArea diff = fixPreviewArea(proposal.diffPreview());
         TabPane tabs = new TabPane(
-                new Tab("РР·РјРµРЅРµРЅРёСЏ (-/+)", diff),
-                new Tab("РСЃС…РѕРґРЅРёРє", before),
-                new Tab("РџСЂРµРґР»РѕР¶РµРЅРёРµ LLM", after));
+                new Tab("Изменения (-/+)", diff),
+                new Tab("Исходник", before),
+                new Tab("Предложение LLM", after));
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         Label info = new Label(proposal.reviewNotes()
-                + "\nРЎРѕС…СЂР°РЅСЏР№С‚Рµ С‚РѕР»СЊРєРѕ РІ РЅРѕРІС‹Р№ С„Р°Р№Р»; РєРѕРґ LLM РЅРµ РІС‹РїРѕР»РЅСЏРµС‚СЃСЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё.");
+                + "\nСохраняйте только в новый файл; код LLM не выполняется автоматически.");
         info.setWrapText(true);
-        Label recheckStatus = new Label("Semgrep РґР»СЏ РїСЂРµРґР»РѕР¶РµРЅРЅРѕРіРѕ РєРѕРґР° РµС‰С‘ РЅРµ Р·Р°РїСѓСЃРєР°Р»СЃСЏ.");
+        Label recheckStatus = new Label("Semgrep для предложенного кода ещё не запускался.");
         recheckStatus.setWrapText(true);
         VBox layout = new VBox(8, info, tabs, recheckStatus);
         layout.setPadding(new Insets(8));
@@ -1200,7 +1199,7 @@ public class MainController {
         save.addEventFilter(ActionEvent.ACTION, event -> {
             event.consume();
             FileChooser chooser = new FileChooser();
-            chooser.setTitle("Р­РєСЃРїРѕСЂС‚РёСЂРѕРІР°С‚СЊ РїСЂРµРґР»РѕР¶РµРЅРЅС‹Р№ РєРѕРґ РІ РЅРѕРІС‹Р№ С„Р°Р№Р»");
+            chooser.setTitle("Экспортировать предложенный код в новый файл");
             String name = proposal.sourcePath().getFileName().toString();
             int dot = name.lastIndexOf('.');
             chooser.setInitialFileName(dot > 0
@@ -1210,12 +1209,12 @@ public class MainController {
             if (selected == null) return;
             try {
                 Path output = fixReviewService.exportSeparate(proposal, selected.toPath());
-                recheckStatus.setText("РџСЂРµРґР»РѕР¶РµРЅРёРµ СЃРѕС…СЂР°РЅРµРЅРѕ РѕС‚РґРµР»СЊРЅРѕ: " + output.getFileName());
-                appendMessageToChatHtml("РЎРёСЃС‚РµРјР°", "РџСЂРµРґР»РѕР¶РµРЅРёРµ СЃРѕС…СЂР°РЅРµРЅРѕ РѕС‚РґРµР»СЊРЅРѕ: `"
-                        + escapeHtml(output.toString()) + "`. РћСЂРёРіРёРЅР°Р» РЅРµ РёР·РјРµРЅС‘РЅ. "
-                        + "РџРѕСЃР»Рµ СЂСѓС‡РЅРѕРіРѕ РїСЂРёРјРµРЅРµРЅРёСЏ РІС‹РїРѕР»РЅРёС‚Рµ РїРѕР»РЅС‹Р№ С‚РµСЃС‚РѕРІС‹Р№ РїСЂРѕРіРѕРЅ.");
+                recheckStatus.setText("Предложение сохранено отдельно: " + output.getFileName());
+                appendMessageToChatHtml("Система", "Предложение сохранено отдельно: `"
+                        + escapeHtml(output.toString()) + "`. Оригинал не изменён. "
+                        + "После ручного применения выполните полный тестовый прогон.");
             } catch (IOException ex) {
-                new Alert(Alert.AlertType.WARNING, "РЎРѕС…СЂР°РЅРµРЅРёРµ РѕС‚РєР»РѕРЅРµРЅРѕ: " + ex.getMessage()).showAndWait();
+                new Alert(Alert.AlertType.WARNING, "Сохранение отклонено: " + ex.getMessage()).showAndWait();
             }
         });
         Button check = (Button) dialog.getDialogPane().lookupButton(checkType);
@@ -1223,12 +1222,12 @@ public class MainController {
             event.consume();
             TreeItem<File> tree = fileTreeView.getRoot();
             if (tree == null || tree.getValue() == null) {
-                recheckStatus.setText("Р”Р»СЏ РїРѕРІС‚РѕСЂРЅРѕР№ РїСЂРѕРІРµСЂРєРё СЃРЅР°С‡Р°Р»Р° РІС‹Р±РµСЂРёС‚Рµ РїР°РїРєСѓ РїСЂРѕРµРєС‚Р°.");
+                recheckStatus.setText("Для повторной проверки сначала выберите папку проекта.");
                 return;
             }
             Path root = tree.getValue().toPath();
             check.setDisable(true);
-            recheckStatus.setText("Semgrep СЃСЂР°РІРЅРёРІР°РµС‚ РѕСЂРёРіРёРЅР°Р» Рё РїСЂРµРґР»РѕР¶РµРЅРЅС‹Р№ РєРѕРґ...");
+            recheckStatus.setText("Semgrep сравнивает оригинал и предложенный код...");
             Task<FixReviewService.Recheck> task = new Task<>() {
                 @Override protected FixReviewService.Recheck call() throws Exception {
                     return fixReviewService.recheckWithSemgrep(proposal, root);
@@ -1237,16 +1236,16 @@ public class MainController {
             task.setOnSucceeded(done -> {
                 check.setDisable(false);
                 var result = task.getValue();
-                recheckStatus.setText("Semgrep: РёСЃС…РѕРґРЅРёРє вЂ” " + result.baselineFindings()
-                        + ", РїСЂРµРґР»РѕР¶РµРЅРёРµ вЂ” " + result.candidateFindings()
-                        + ". РћС†РµРЅРёС‚Рµ РїСЂР°РІРёР»Р° РІСЂСѓС‡РЅСѓСЋ: " + result.candidateRules()
-                        + ". РќРѕР»СЊ РЅР°С…РѕРґРѕРє РќР• РґРѕРєР°Р·С‹РІР°РµС‚ Р±РµР·РѕРїР°СЃРЅРѕСЃС‚СЊ.");
+                recheckStatus.setText("Semgrep: исходник — " + result.baselineFindings()
+                        + ", предложение — " + result.candidateFindings()
+                        + ". Оцените правила вручную: " + result.candidateRules()
+                        + ". Ноль находок НЕ доказывает безопасность.");
             });
             task.setOnFailed(done -> {
                 check.setDisable(false);
-                recheckStatus.setText("РџРѕРІС‚РѕСЂРЅР°СЏ РїСЂРѕРІРµСЂРєР° РЅРµ Р·Р°РІРµСЂС€РµРЅР°: "
+                recheckStatus.setText("Повторная проверка не завершена: "
                         + task.getException().getMessage()
-                        + ". Р РµР·СѓР»СЊС‚Р°С‚ РЅРµР»СЊР·СЏ СЃС‡РёС‚Р°С‚СЊ С‡РёСЃС‚С‹Рј.");
+                        + ". Результат нельзя считать чистым.");
             });
             Thread thread = new Thread(task, "fix-proposal-semgrep-recheck");
             thread.setDaemon(true);
@@ -1264,7 +1263,7 @@ public class MainController {
     }
 
     // ==========================================
-    // Р’РЎРџРћРњРћР“РђРўР•Р›Р¬РќР«Р• РњР•РўРћР”Р« HTML Р WEBVIEW
+    // ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ HTML И WEBVIEW
     // ==========================================
 
     private void resetChatHtml() {
@@ -1308,7 +1307,7 @@ public class MainController {
     }
 
     private void appendMessageToChatHtml(String sender, String markdownText) {
-        String cssClass = sender.equals("Р’С‹") ? "user" : (sender.equals("РЎРёСЃС‚РµРјР°") ? "system" : "ai");
+        String cssClass = sender.equals("Вы") ? "user" : (sender.equals("Система") ? "system" : "ai");
         String htmlContent = htmlRenderer.render(markdownParser.parse(markdownText));
         chatHistoryHtml.append("<div class='msg ").append(cssClass).append("'>")
                 .append("<strong>").append(sender).append(":</strong><br/>")
@@ -1318,7 +1317,7 @@ public class MainController {
     }
 
     private void appendGeneralChatMessage(String sender, String markdownText) {
-        String cssClass = sender.equals("Р’С‹") ? "user" : (sender.equals("РЎРёСЃС‚РµРјР°") ? "system" : "ai");
+        String cssClass = sender.equals("Вы") ? "user" : (sender.equals("Система") ? "system" : "ai");
         String htmlContent = htmlRenderer.render(markdownParser.parse(markdownText));
         generalChatHtml.append("<div class='msg ").append(cssClass).append("'>")
                 .append("<strong>").append(sender).append(":</strong><br/>")
