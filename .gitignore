@@ -56,3 +56,6 @@ fix-validation/
 fix-experiments-*.csv
 fix-experiments-*.md
 fix-experiments-*.svg
+
+# 9.0: local preflight audit record (never publish unreviewed local metadata)
+release-preflight-*.json
