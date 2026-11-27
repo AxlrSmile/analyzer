@@ -87,7 +87,8 @@ public class ScanExportService {
             record.put("llmStatus", llmStatusForPath(scan, (String) finding.get("file")));
             csvRow(csv, record);
         }
-        Files.writeString(destination, csv.toString(), StandardCharsets.UTF_8);
+        // UTF-8 BOM lets Excel detect the encoding of Cyrillic and Kazakh text.
+        Files.writeString(destination, "\uFEFF" + csv, StandardCharsets.UTF_8);
     }
 
     private static void csvRow(StringBuilder csv, Map<String, Object> record) {
