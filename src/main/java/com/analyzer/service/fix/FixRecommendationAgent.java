@@ -86,9 +86,12 @@ public class FixRecommendationAgent {
                 FixReviewService.diffPreview(original, candidate));
     }
 
+    private static final String BEGIN_SOURCE = "[BEGIN SOURCE]";
+    private static final String END_SOURCE = "[END SOURCE]";
+
     static String extractCode(String raw) throws IOException {
         if (raw == null || raw.isBlank()) throw new IOException("LLM вернула пустое предложение");
-        String value = raw.strip();
+        String value = stripSourceMarkers(raw.strip());
         if (value.startsWith("```")) {
             int newline = value.indexOf('\n');
             int close = value.lastIndexOf("```");
@@ -97,8 +100,24 @@ public class FixRecommendationAgent {
             }
             value = value.substring(newline + 1, close).strip();
         }
+        value = stripSourceMarkers(value);
         if (value.contains("```")) throw new IOException("Модель смешала код и markdown");
+        if (value.contains(BEGIN_SOURCE) || value.contains(END_SOURCE)) {
+            throw new IOException("Модель вернула служебные метки SOURCE внутри кода");
+        }
+        if (value.isBlank()) throw new IOException("LLM вернула пустое предложение");
         return value;
+    }
+
+    /**
+     * Models sometimes echo the prompt's data delimiters around the file. Only an enclosing
+     * marker at the very start or end is removed; a marker inside the code is rejected above.
+     */
+    private static String stripSourceMarkers(String value) {
+        String out = value;
+        if (out.startsWith(BEGIN_SOURCE)) out = out.substring(BEGIN_SOURCE.length()).strip();
+        if (out.endsWith(END_SOURCE)) out = out.substring(0, out.length() - END_SOURCE.length()).strip();
+        return out;
     }
 
     private static String summarizeFindings(List<Vulnerability> findings) {
