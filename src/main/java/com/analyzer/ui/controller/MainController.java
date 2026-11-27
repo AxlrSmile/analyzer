@@ -1,5 +1,7 @@
 package com.analyzer.ui.controller;
 
+import static com.analyzer.ui.UiLanguage.tr;
+
 import com.analyzer.domain.model.SourceFile;
 import com.analyzer.domain.model.Vulnerability;
 import com.analyzer.service.agent.AgentService;
@@ -425,7 +427,7 @@ public class MainController {
     @FXML
     private void handleAgentSelectFolder() {
         DirectoryChooser directoryChooser = new DirectoryChooser();
-        directoryChooser.setTitle("Выберите рабочую папку для создания проекта");
+        directoryChooser.setTitle(tr("Выберите рабочую папку для создания проекта"));
 
         Stage stage = (Stage) agentSelectFolderButton.getScene().getWindow();
         File folder = directoryChooser.showDialog(stage);
@@ -439,7 +441,7 @@ public class MainController {
     @FXML
     private void handleSelectBenchmarkFolder() {
         DirectoryChooser chooser = new DirectoryChooser();
-        chooser.setTitle("Выберите директорию с бенчмарк-файлами");
+        chooser.setTitle(tr("Выберите директорию с бенчмарк-файлами"));
         Stage stage = (Stage) selectBenchmarkFolderButton.getScene().getWindow();
         File dir = chooser.showDialog(stage);
         if (dir != null) {
@@ -451,19 +453,19 @@ public class MainController {
     @FXML
     private void handleStartBenchmark() {
         if (benchmarkFolder == null || !benchmarkFolder.exists()) {
-            new Alert(Alert.AlertType.WARNING, "Сначала укажите папку с тестовыми файлами!").showAndWait();
+            new Alert(Alert.AlertType.WARNING, tr("Сначала укажите папку с тестовыми файлами!")).showAndWait();
             return;
         }
 
         File[] files = benchmarkFolder.listFiles(f -> f.isFile() && !f.getName().startsWith("."));
         if (files == null || files.length == 0) {
-            new Alert(Alert.AlertType.WARNING, "В выбранной папке нет подходящих файлов!").showAndWait();
+            new Alert(Alert.AlertType.WARNING, tr("В выбранной папке нет подходящих файлов!")).showAndWait();
             return;
         }
 
         List<String> models = ollamaClient.getAvailableModels();
         if (models.isEmpty()) {
-            new Alert(Alert.AlertType.WARNING, "В Ollama не найдено активных моделей!").showAndWait();
+            new Alert(Alert.AlertType.WARNING, tr("В Ollama не найдено активных моделей!")).showAndWait();
             return;
         }
 
@@ -484,7 +486,7 @@ public class MainController {
 
         task.setOnFailed(e -> {
             startBenchmarkButton.setDisable(false);
-            new Alert(Alert.AlertType.ERROR, "Ошибка выполнения бенчмарка: " + task.getException().getMessage()).showAndWait();
+            new Alert(Alert.AlertType.ERROR, tr("Ошибка выполнения бенчмарка: ") + task.getException().getMessage()).showAndWait();
         });
 
         Thread thread = new Thread(task);
@@ -499,19 +501,19 @@ public class MainController {
         String selectedModel = (agentModelComboBox != null) ? agentModelComboBox.getValue() : null;
 
         if (folderPath.isEmpty()) {
-            Alert alert = new Alert(Alert.AlertType.WARNING, "Пожалуйста, выберите рабочую папку!");
+            Alert alert = new Alert(Alert.AlertType.WARNING, tr("Пожалуйста, выберите рабочую папку!"));
             alert.showAndWait();
             return;
         }
 
         if (prompt.isEmpty()) {
-            Alert alert = new Alert(Alert.AlertType.WARNING, "Пожалуйста, опишите задачу для агента!");
+            Alert alert = new Alert(Alert.AlertType.WARNING, tr("Пожалуйста, опишите задачу для агента!"));
             alert.showAndWait();
             return;
         }
 
         if (selectedModel == null || selectedModel.isEmpty()) {
-            Alert alert = new Alert(Alert.AlertType.WARNING, "Пожалуйста, выберите модель для генерации!");
+            Alert alert = new Alert(Alert.AlertType.WARNING, tr("Пожалуйста, выберите модель для генерации!"));
             alert.showAndWait();
             return;
         }
@@ -568,7 +570,7 @@ public class MainController {
         if (prompt.isEmpty()) return;
 
         if (selectedModel == null || selectedModel.isEmpty()) {
-            Alert alert = new Alert(Alert.AlertType.WARNING, "Пожалуйста, выберите модель для общения!");
+            Alert alert = new Alert(Alert.AlertType.WARNING, tr("Пожалуйста, выберите модель для общения!"));
             alert.showAndWait();
             return;
         }
@@ -627,7 +629,7 @@ public class MainController {
 
     private void handleSelectFolderClick() {
         DirectoryChooser directoryChooser = new DirectoryChooser();
-        directoryChooser.setTitle("Выберите папку с исходным кодом");
+        directoryChooser.setTitle(tr("Выберите папку с исходным кодом"));
         Stage stage = (Stage) selectFolderButton.getScene().getWindow();
         File folder = directoryChooser.showDialog(stage);
 
@@ -689,21 +691,21 @@ public class MainController {
         if (fileTreeView == null || fileTreeView.getRoot() == null) return;
         File projectFolder = fileTreeView.getRoot().getValue();
         if (projectFolder == null || !projectFolder.isDirectory()) {
-            new Alert(Alert.AlertType.WARNING, "Сначала выберите папку проекта.").showAndWait();
+            new Alert(Alert.AlertType.WARNING, tr("Сначала выберите папку проекта.")).showAndWait();
             return;
         }
 
         List<File> selectedFiles = new ArrayList<>();
         collectSelectedFiles((CheckBoxTreeItem<File>) fileTreeView.getRoot(), selectedFiles);
         if (selectedFiles.isEmpty()) {
-            new Alert(Alert.AlertType.WARNING, "Вы не выбрали ни одного файла!").showAndWait();
+            new Alert(Alert.AlertType.WARNING, tr("Вы не выбрали ни одного файла!")).showAndWait();
             return;
         }
         if (scanModelComboBox == null || scanModelComboBox.getValue() == null
                 || scanModelComboBox.getValue().isBlank()) {
             new Alert(Alert.AlertType.WARNING,
-                    "Сначала выберите модель Ollama на панели аудита. "+
-                    "Для обновления списка используйте кнопку «Обновить модели».").showAndWait();
+                    tr("Сначала выберите модель Ollama на панели аудита. ")+
+                    tr("Для обновления списка используйте кнопку «Обновить модели».")).showAndWait();
             return;
         }
         String targetModel = getSelectedScanModel();
@@ -862,16 +864,16 @@ public class MainController {
      */
     private void handleImportSemgrepClick() {
         if (fileTreeView == null || fileTreeView.getRoot() == null) {
-            new Alert(Alert.AlertType.WARNING, "Сначала выберите папку проекта.").showAndWait();
+            new Alert(Alert.AlertType.WARNING, tr("Сначала выберите папку проекта.")).showAndWait();
             return;
         }
         File projectFolder = fileTreeView.getRoot().getValue();
         if (projectFolder == null || !projectFolder.isDirectory()) {
-            new Alert(Alert.AlertType.WARNING, "Сначала выберите папку проекта.").showAndWait();
+            new Alert(Alert.AlertType.WARNING, tr("Сначала выберите папку проекта.")).showAndWait();
             return;
         }
         FileChooser chooser = new FileChooser();
-        chooser.setTitle("Открыть JSON-отчёт Semgrep");
+        chooser.setTitle(tr("Открыть JSON-отчёт Semgrep"));
         chooser.getExtensionFilters().add(
                 new FileChooser.ExtensionFilter("JSON files (*.json)", "*.json"));
         File preferred = new File(projectFolder, "semgrep-results.json");
@@ -883,7 +885,7 @@ public class MainController {
         try {
             report = semgrepReportService.read(file.toPath());
         } catch (IOException ex) {
-            new Alert(Alert.AlertType.ERROR, "Не удалось прочитать Semgrep JSON: " + ex.getMessage()).showAndWait();
+            new Alert(Alert.AlertType.ERROR, tr("Не удалось прочитать Semgrep JSON: ") + ex.getMessage()).showAndWait();
             return;
         }
         // Validate all source paths before updating the UI, to avoid half-imports.
@@ -959,11 +961,11 @@ public class MainController {
 
     private void handleExportResultsClick() {
         if (scannedFiles.isEmpty()) {
-            new Alert(Alert.AlertType.WARNING, "Сначала просканируйте проект или импортируйте отчёт.").showAndWait();
+            new Alert(Alert.AlertType.WARNING, tr("Сначала просканируйте проект или импортируйте отчёт.")).showAndWait();
             return;
         }
         FileChooser chooser = new FileChooser();
-        chooser.setTitle("Экспорт необработанных результатов (возможны фрагменты секретов)");
+        chooser.setTitle(tr("Экспорт необработанных результатов (возможны фрагменты секретов)"));
         FileChooser.ExtensionFilter json = new FileChooser.ExtensionFilter("JSON (*.json)", "*.json");
         FileChooser.ExtensionFilter csv = new FileChooser.ExtensionFilter("CSV (*.csv)", "*.csv");
         chooser.getExtensionFilters().addAll(json, csv);
@@ -981,22 +983,22 @@ public class MainController {
         try {
             if (asCsv) scanExportService.writeCsv(destination, List.copyOf(scannedFiles), lastScanResult);
             else scanExportService.writeJson(destination, List.copyOf(scannedFiles), lastScanResult, lastScanModel);
-            new Alert(Alert.AlertType.INFORMATION, "Экспорт сохранён. Не публикуйте файл без проверки секретов.")
+            new Alert(Alert.AlertType.INFORMATION, tr("Экспорт сохранён. Не публикуйте файл без проверки секретов."))
                     .showAndWait();
         } catch (IOException ex) {
-            new Alert(Alert.AlertType.ERROR, "Ошибка экспорта: " + ex.getMessage()).showAndWait();
+            new Alert(Alert.AlertType.ERROR, tr("Ошибка экспорта: ") + ex.getMessage()).showAndWait();
         }
     }
 
     private void handleExportPdfClick() {
         if (scannedFiles.isEmpty()) {
-            Alert alert = new Alert(Alert.AlertType.WARNING, "Сначала необходимо просканировать проект!");
+            Alert alert = new Alert(Alert.AlertType.WARNING, tr("Сначала необходимо просканировать проект!"));
             alert.showAndWait();
             return;
         }
 
         FileChooser fileChooser = new FileChooser();
-        fileChooser.setTitle("Сохранить PDF отчет");
+        fileChooser.setTitle(tr("Сохранить PDF отчет"));
         fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("PDF Documents (*.pdf)", "*.pdf"));
         fileChooser.setInitialFileName("security_report.pdf");
 
@@ -1014,10 +1016,10 @@ public class MainController {
                         + "; пропущено файлов: " + lastScanResult.skippedTargets()
                         + "; диагностик: " + lastScanResult.diagnostics().size() + ".";
                 pdfReportService.generatePdfReport(scannedFiles, saveFile.getAbsolutePath(), coverage);
-                Alert alert = new Alert(Alert.AlertType.INFORMATION, "PDF-отчет успешно сохранен!");
+                Alert alert = new Alert(Alert.AlertType.INFORMATION, tr("PDF-отчет успешно сохранен!"));
                 alert.showAndWait();
             } catch (Exception e) {
-                Alert alert = new Alert(Alert.AlertType.ERROR, "Не удалось создать PDF-отчет: " + e.getMessage());
+                Alert alert = new Alert(Alert.AlertType.ERROR, tr("Не удалось создать PDF-отчет: ") + e.getMessage());
                 alert.showAndWait();
             }
         }
@@ -1025,14 +1027,14 @@ public class MainController {
 
     private void handlePasteAndAnalyzeCode() {
         Dialog<String> dialog = new Dialog<>();
-        dialog.setTitle("Быстрый анализ кода");
-        dialog.setHeaderText("Вставьте фрагмент кода для анализа (Ctrl+V)");
+        dialog.setTitle(tr("Быстрый анализ кода"));
+        dialog.setHeaderText(tr("Вставьте фрагмент кода для анализа (Ctrl+V)"));
 
-        ButtonType analyzeButtonType = new ButtonType("Анализировать", ButtonBar.ButtonData.OK_DONE);
+        ButtonType analyzeButtonType = new ButtonType(tr("Анализировать"), ButtonBar.ButtonData.OK_DONE);
         dialog.getDialogPane().getButtonTypes().addAll(analyzeButtonType, ButtonType.CANCEL);
 
         TextArea textArea = new TextArea();
-        textArea.setPromptText("Вставьте фрагмент кода (C, C++, Java, Python, Go)...");
+        textArea.setPromptText(tr("Вставьте фрагмент кода (C, C++, Java, Python, Go)..."));
         textArea.setPrefRowCount(15);
         textArea.setPrefColumnCount(60);
         textArea.setWrapText(true);
@@ -1096,7 +1098,7 @@ public class MainController {
         if (question.isEmpty()) return;
 
         if (selectedTreeItem == null || selectedTreeItem.getValue() == null || selectedVuln == null) {
-            Alert alert = new Alert(Alert.AlertType.WARNING, "Пожалуйста, выберите файл в дереве и конкретную уязвимость в таблице!");
+            Alert alert = new Alert(Alert.AlertType.WARNING, tr("Пожалуйста, выберите файл в дереве и конкретную уязвимость в таблице!"));
             alert.showAndWait();
             return;
         }
@@ -1139,7 +1141,7 @@ public class MainController {
     private void handleFixCurrentFileClick() {
         TreeItem<File> selected = fileTreeView.getSelectionModel().getSelectedItem();
         if (selected == null || selected.getValue() == null) {
-            new Alert(Alert.AlertType.WARNING, "Выберите файл с результатами анализа.").showAndWait();
+            new Alert(Alert.AlertType.WARNING, tr("Выберите файл с результатами анализа.")).showAndWait();
             return;
         }
         SourceFile source = scannedFiles.stream()
@@ -1147,7 +1149,7 @@ public class MainController {
                         && sf.getAbsolutePath().equals(selected.getValue().getAbsolutePath()))
                 .findFirst().orElse(null);
         if (source == null || source.getVulnerabilities().isEmpty()) {
-            new Alert(Alert.AlertType.INFORMATION, "Для этого файла нет находок.").showAndWait();
+            new Alert(Alert.AlertType.INFORMATION, tr("Для этого файла нет находок.")).showAndWait();
             return;
         }
         fixCurrentFileButton.setDisable(true);
@@ -1180,13 +1182,13 @@ public class MainController {
                 .filter(sf -> sf.getPath() != null && !sf.getVulnerabilities().isEmpty())
                 .limit(5).toList();
         if (candidates.isEmpty()) {
-            new Alert(Alert.AlertType.INFORMATION, "Сначала проанализируйте файлы проекта.").showAndWait();
+            new Alert(Alert.AlertType.INFORMATION, tr("Сначала проанализируйте файлы проекта.")).showAndWait();
             return;
         }
         Alert confirmation = new Alert(Alert.AlertType.CONFIRMATION,
-                "Сформировать предложения максимум для " + candidates.size()
-                        + " файлов? Все предложения будут показаны по очереди; "
-                        + "оригиналы не изменятся и ничего автоматически не сохранится.",
+                tr("Сформировать предложения максимум для ") + candidates.size()
+                        + tr(" файлов? Все предложения будут показаны по очереди; ")
+                        + tr("оригиналы не изменятся и ничего автоматически не сохранится."),
                 ButtonType.YES, ButtonType.CANCEL);
         if (confirmation.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.YES) return;
         String model = getSelectedScanModel();
@@ -1226,38 +1228,38 @@ public class MainController {
 
     private void showFixProposalDialog(FixProposal proposal) {
         Dialog<Void> dialog = new Dialog<>();
-        dialog.setTitle("Fix Recommendation Agent — проверка 8.9 и ручной просмотр");
-        dialog.setHeaderText("Предложение для: " + proposal.sourcePath().getFileName());
-        ButtonType saveType = new ButtonType("Сохранить отдельно...", ButtonBar.ButtonData.APPLY);
-        ButtonType checkType = new ButtonType("Повторно проверить Semgrep", ButtonBar.ButtonData.OTHER);
+        dialog.setTitle(tr("Fix Recommendation Agent — проверка 8.9 и ручной просмотр"));
+        dialog.setHeaderText(tr("Предложение для: ") + proposal.sourcePath().getFileName());
+        ButtonType saveType = new ButtonType(tr("Сохранить отдельно..."), ButtonBar.ButtonData.APPLY);
+        ButtonType checkType = new ButtonType(tr("Повторно проверить Semgrep"), ButtonBar.ButtonData.OTHER);
         dialog.getDialogPane().getButtonTypes().addAll(checkType, saveType, ButtonType.CLOSE);
 
         TextArea before = fixPreviewArea(proposal.originalContent());
         TextArea after = fixPreviewArea(proposal.proposedContent());
         TextArea diff = fixPreviewArea(proposal.diffPreview());
         TabPane tabs = new TabPane(
-                new Tab("Изменения (-/+)", diff),
-                new Tab("Исходник", before),
-                new Tab("Предложение LLM", after));
+                new Tab(tr("Изменения (-/+)"), diff),
+                new Tab(tr("Исходник"), before),
+                new Tab(tr("Предложение LLM"), after));
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         Label info = new Label(proposal.reviewNotes()
-                + "\nСохраняйте только в новый файл; код LLM не выполняется автоматически.");
+                + tr("\nСохраняйте только в новый файл; код LLM не выполняется автоматически."));
         info.setWrapText(true);
-        Label validationStatus = new Label("Java: NOT_CHECKED — подготовка к проверке...");
+        Label validationStatus = new Label(tr("Java: NOT_CHECKED — подготовка к проверке..."));
         validationStatus.setWrapText(true);
-        TextArea validationDetails = new TextArea("Предложение ещё не проверено компилятором Java.");
+        TextArea validationDetails = new TextArea(tr("Предложение ещё не проверено компилятором Java."));
         validationDetails.setEditable(false);
         validationDetails.setWrapText(true);
         validationDetails.setPrefRowCount(3);
         validationDetails.setMaxHeight(100);
-        Button validateJava = new Button("Повторить проверку Java");
-        Button saveValidationReport = new Button("Сохранить отчёт проверки TXT");
+        Button validateJava = new Button(tr("Повторить проверку Java"));
+        Button saveValidationReport = new Button(tr("Сохранить отчёт проверки TXT"));
         saveValidationReport.setDisable(true);
-        Button recordExperiment = new Button("Записать эксперимент 8.9");
-        Button exportExperiments = new Button("Экспорт журнала CSV/MD");
+        Button recordExperiment = new Button(tr("Записать эксперимент 8.9"));
+        Button exportExperiments = new Button(tr("Экспорт журнала CSV/MD"));
         HBox validationActions = new HBox(10, validateJava, saveValidationReport);
         HBox experimentActions = new HBox(10, recordExperiment, exportExperiments);
-        Label recheckStatus = new Label("Semgrep для предложенного кода ещё не запускался.");
+        Label recheckStatus = new Label(tr("Semgrep для предложенного кода ещё не запускался."));
         recheckStatus.setWrapText(true);
         VBox layout = new VBox(8, info, tabs, validationStatus, validationDetails,
                 validationActions, recheckStatus, experimentActions);
@@ -1277,9 +1279,9 @@ public class MainController {
             save.setDisable(true);
             saveValidationReport.setDisable(true);
             latestValidation[0] = null;
-            validationStatus.setText("Java: NOT_CHECKED — проверяется компиляция и API...");
-            validationDetails.setText("javac компилирует исходник и предложение отдельно, "
-                    + "без запуска программы и без annotation processors.");
+            validationStatus.setText(tr("Java: NOT_CHECKED — проверяется компиляция и API..."));
+            validationDetails.setText(tr("javac компилирует исходник и предложение отдельно, ")
+                    + tr("без запуска программы и без annotation processors."));
             Task<FixValidationService.Result> task = new Task<>() {
                 @Override protected FixValidationService.Result call() throws Exception {
                     return fixValidationService.validate(proposal);
@@ -1296,9 +1298,9 @@ public class MainController {
             task.setOnFailed(done -> {
                 validateJava.setDisable(false);
                 // No validation verdict is claimed after an exception.
-                validationStatus.setText("Java: NOT_CHECKED — проверка завершилась ошибкой");
+                validationStatus.setText(tr("Java: NOT_CHECKED — проверка завершилась ошибкой"));
                 Throwable ex = task.getException();
-                validationDetails.setText(ex == null ? "Неизвестная ошибка"
+                validationDetails.setText(ex == null ? tr("Неизвестная ошибка")
                         : String.valueOf(ex.getMessage()));
                 save.setDisable(false); // Export separate file is still possible for manual investigation.
             });
@@ -1311,7 +1313,7 @@ public class MainController {
         saveValidationReport.setOnAction(event -> {
             if (latestValidation[0] == null) return;
             FileChooser chooser = new FileChooser();
-            chooser.setTitle("Экспортировать отчёт проверки в новый TXT");
+            chooser.setTitle(tr("Экспортировать отчёт проверки в новый TXT"));
             chooser.setInitialFileName(proposal.sourcePath().getFileName() + ".validation.txt");
             File selected = chooser.showSaveDialog(dialog.getOwner());
             if (selected == null) return;
@@ -1330,7 +1332,7 @@ public class MainController {
                         StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
             } catch (IOException ex) {
                 new Alert(Alert.AlertType.WARNING,
-                        "Отчёт не сохранён (существующий файл не перезаписывается): "
+                        tr("Отчёт не сохранён (существующий файл не перезаписывается): ")
                                 + ex.getMessage()).showAndWait();
             }
         });
@@ -1341,14 +1343,14 @@ public class MainController {
                 String status = latestValidation[0] == null ? "NOT_CHECKED"
                         : latestValidation[0].overall().name();
                 Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
-                        "Проверка исправления: " + status + ". "
-                                + "Предложение нельзя считать готовым к применению. "
-                                + "Экспортировать отдельно только для исследования?",
+                        tr("Проверка исправления: ") + status + ". "
+                                + tr("Предложение нельзя считать готовым к применению. ")
+                                + tr("Экспортировать отдельно только для исследования?"),
                         ButtonType.YES, ButtonType.CANCEL);
                 if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.YES) return;
             }
             FileChooser chooser = new FileChooser();
-            chooser.setTitle("Экспортировать предложенный код в новый файл");
+            chooser.setTitle(tr("Экспортировать предложенный код в новый файл"));
             String name = proposal.sourcePath().getFileName().toString();
             int dot = name.lastIndexOf('.');
             chooser.setInitialFileName(dot > 0
@@ -1358,12 +1360,12 @@ public class MainController {
             if (selected == null) return;
             try {
                 Path output = fixReviewService.exportSeparate(proposal, selected.toPath());
-                recheckStatus.setText("Предложение сохранено отдельно: " + output.getFileName());
+                recheckStatus.setText(tr("Предложение сохранено отдельно: ") + output.getFileName());
                 appendMessageToChatHtml("Система", "Предложение сохранено отдельно: `"
                         + escapeHtml(output.toString()) + "`. Оригинал не изменён. "
                         + "После ручного применения выполните полный тестовый прогон.");
             } catch (IOException ex) {
-                new Alert(Alert.AlertType.WARNING, "Сохранение отклонено: " + ex.getMessage()).showAndWait();
+                new Alert(Alert.AlertType.WARNING, tr("Сохранение отклонено: ") + ex.getMessage()).showAndWait();
             }
         });
         Button check = (Button) dialog.getDialogPane().lookupButton(checkType);
@@ -1371,13 +1373,13 @@ public class MainController {
             event.consume();
             TreeItem<File> tree = fileTreeView.getRoot();
             if (tree == null || tree.getValue() == null) {
-                recheckStatus.setText("Для повторной проверки сначала выберите папку проекта.");
+                recheckStatus.setText(tr("Для повторной проверки сначала выберите папку проекта."));
                 return;
             }
             Path root = tree.getValue().toPath();
             check.setDisable(true);
             latestSemgrep[0] = null;
-            recheckStatus.setText("Semgrep сравнивает оригинал и предложенный код...");
+            recheckStatus.setText(tr("Semgrep сравнивает оригинал и предложенный код..."));
             Task<FixReviewService.Recheck> task = new Task<>() {
                 @Override protected FixReviewService.Recheck call() throws Exception {
                     return fixReviewService.recheckWithSemgrep(proposal, root);
@@ -1387,16 +1389,16 @@ public class MainController {
                 check.setDisable(false);
                 var result = task.getValue();
                 latestSemgrep[0] = result;
-                recheckStatus.setText("Semgrep: исходник — " + result.baselineFindings()
-                        + ", предложение — " + result.candidateFindings()
-                        + ". Оцените правила вручную: " + result.candidateRules()
-                        + ". Ноль находок НЕ доказывает безопасность.");
+                recheckStatus.setText(tr("Semgrep: исходник — ") + result.baselineFindings()
+                        + tr(", предложение — ") + result.candidateFindings()
+                        + tr(". Оцените правила вручную: ") + result.candidateRules()
+                        + tr(". Ноль находок НЕ доказывает безопасность."));
             });
             task.setOnFailed(done -> {
                 check.setDisable(false);
-                recheckStatus.setText("Повторная проверка не завершена: "
+                recheckStatus.setText(tr("Повторная проверка не завершена: ")
                         + task.getException().getMessage()
-                        + ". Результат нельзя считать чистым.");
+                        + tr(". Результат нельзя считать чистым."));
             });
             Thread thread = new Thread(task, "fix-proposal-semgrep-recheck");
             thread.setDaemon(true);
@@ -1415,7 +1417,7 @@ public class MainController {
         try {
             fixReviewService.ensureUnchanged(proposal);
         } catch (IOException ex) {
-            new Alert(Alert.AlertType.WARNING, "Оригинал изменился: " + ex.getMessage()).showAndWait();
+            new Alert(Alert.AlertType.WARNING, tr("Оригинал изменился: ") + ex.getMessage()).showAndWait();
             return;
         }
         String detected = scannedFiles.stream()
@@ -1426,14 +1428,14 @@ public class MainController {
                 .filter(value -> !FixExperimentService.normalizedCwe(value).equals("CWE-OTHER"))
                 .findFirst().orElse("CWE-OTHER");
         Dialog<Void> dialog = new Dialog<>();
-        dialog.setTitle("8.9 — Журнал функциональных экспериментов");
-        dialog.setHeaderText("Зафиксировать наблюдения: " + proposal.sourcePath().getFileName());
+        dialog.setTitle(tr("8.9 — Журнал функциональных экспериментов"));
+        dialog.setHeaderText(tr("Зафиксировать наблюдения: ") + proposal.sourcePath().getFileName());
         ComboBox<String> cweChoice = new ComboBox<>(FXCollections.observableArrayList(
                 "CWE-22", "CWE-89", "CWE-78", "CWE-79", "CWE-918", "CWE-611", "CWE-502", "CWE-OTHER"));
         if (!cweChoice.getItems().contains(detected)) cweChoice.getItems().add(detected);
         cweChoice.setValue(detected);
-        Label intro = new Label("Отмечайте PASSED/FAILED только по отдельно выполненным тестам. "
-                + "SKIPPED означает, что тест не состоялся. Недоверенный код здесь НЕ запускается.");
+        Label intro = new Label(tr("Отмечайте PASSED/FAILED только по отдельно выполненным тестам. ")
+                + tr("SKIPPED означает, что тест не состоялся. Недоверенный код здесь НЕ запускается."));
         intro.setWrapText(true);
         Label cweReview = new Label();
         cweReview.setWrapText(true);
@@ -1442,7 +1444,7 @@ public class MainController {
         Runnable reload = () -> {
             String cwe = cweChoice.getValue();
             var review = fixCweReviewService.inspect(cwe, proposal.proposedContent());
-            cweReview.setText("Статическая подсказка: " + review.status() + " — " + review.explanation());
+            cweReview.setText(tr("Статическая подсказка: ") + review.status() + " — " + review.explanation());
             statuses.clear();
             probes.getChildren().clear();
             for (var scenario : FixExperimentService.scenariosFor(cwe)) {
@@ -1465,18 +1467,18 @@ public class MainController {
                 + " | Semgrep: " + (semgrep == null ? "NOT_CHECKED" : semgrep.baselineFindings()
                 + " → " + semgrep.candidateFindings()));
         javaStatus.setWrapText(true);
-        Label notePrompt = new Label("Краткое основание (например: результат отдельного H2-теста; "
-                + "Windows запретила создавать symlink). Не вставляйте код и секреты:");
+        Label notePrompt = new Label(tr("Краткое основание (например: результат отдельного H2-теста; ")
+                + tr("Windows запретила создавать symlink). Не вставляйте код и секреты:"));
         notePrompt.setWrapText(true);
         TextArea note = new TextArea();
-        note.setPromptText("Основание для ручных статусов; не более 400 символов");
+        note.setPromptText(tr("Основание для ручных статусов; не более 400 символов"));
         note.setPrefRowCount(3);
         note.setWrapText(true);
-        VBox content = new VBox(11, intro, new Label("Категория CWE:"), cweChoice,
-                cweReview, javaStatus, new Label("Функциональные сценарии:"), probes, notePrompt, note);
+        VBox content = new VBox(11, intro, new Label(tr("Категория CWE:")), cweChoice,
+                cweReview, javaStatus, new Label(tr("Функциональные сценарии:")), probes, notePrompt, note);
         content.setPadding(new Insets(10));
         content.setPrefWidth(700);
-        ButtonType recordButton = new ButtonType("Добавить в журнал", ButtonBar.ButtonData.OK_DONE);
+        ButtonType recordButton = new ButtonType(tr("Добавить в журнал"), ButtonBar.ButtonData.OK_DONE);
         dialog.getDialogPane().getButtonTypes().addAll(recordButton, ButtonType.CANCEL);
         dialog.getDialogPane().setContent(new ScrollPane(content));
         dialog.getDialogPane().setPrefSize(760, 600);
@@ -1490,12 +1492,12 @@ public class MainController {
                         new FixExperimentService.Observation(scenario, choice.getValue())));
                 var recorded = fixExperimentService.record(proposal, cweChoice.getValue(),
                         validation, semgrep, observations, note.getText());
-                new Alert(Alert.AlertType.INFORMATION, "Эксперимент №" + recorded.number()
-                        + " сохранён в журнале сеанса. Итог: " + recorded.verdict()
-                        + ". Не забудьте экспортировать CSV/MD до закрытия приложения.").showAndWait();
+                new Alert(Alert.AlertType.INFORMATION, tr("Эксперимент №") + recorded.number()
+                        + tr(" сохранён в журнале сеанса. Итог: ") + recorded.verdict()
+                        + tr(". Не забудьте экспортировать CSV/MD до закрытия приложения.")).showAndWait();
                 dialog.close();
             } catch (IOException | IllegalArgumentException ex) {
-                new Alert(Alert.AlertType.WARNING, "Запись отклонена: " + ex.getMessage()).showAndWait();
+                new Alert(Alert.AlertType.WARNING, tr("Запись отклонена: ") + ex.getMessage()).showAndWait();
             }
         });
         dialog.showAndWait();
@@ -1503,11 +1505,11 @@ public class MainController {
 
     private void exportFixExperiments() {
         if (fixExperimentService.entries().isEmpty()) {
-            new Alert(Alert.AlertType.INFORMATION, "Журнал пуст. Сначала добавьте эксперимент 8.9.").showAndWait();
+            new Alert(Alert.AlertType.INFORMATION, tr("Журнал пуст. Сначала добавьте эксперимент 8.9.")).showAndWait();
             return;
         }
         FileChooser chooser = new FileChooser();
-        chooser.setTitle("Экспорт журнала экспериментов 8.9 (без исходного кода)");
+        chooser.setTitle(tr("Экспорт журнала экспериментов 8.9 (без исходного кода)"));
         chooser.setInitialFileName("fix-experiments-8.9.csv");
         chooser.getExtensionFilters().addAll(
                 new FileChooser.ExtensionFilter("CSV таблица (*.csv)", "*.csv"),
@@ -1520,11 +1522,11 @@ public class MainController {
             } else {
                 fixExperimentService.exportCsv(file.toPath());
             }
-            new Alert(Alert.AlertType.INFORMATION, "Экспортировано " + fixExperimentService.entries().size()
-                    + " экспериментов. Коды и абсолютные пути не включены. "
-                    + "Повторное сохранение требует нового имени файла.").showAndWait();
+            new Alert(Alert.AlertType.INFORMATION, tr("Экспортировано ") + fixExperimentService.entries().size()
+                    + tr(" экспериментов. Коды и абсолютные пути не включены. ")
+                    + tr("Повторное сохранение требует нового имени файла.")).showAndWait();
         } catch (IOException ex) {
-            new Alert(Alert.AlertType.WARNING, "Не удалось сохранить отчёт: " + ex.getMessage()).showAndWait();
+            new Alert(Alert.AlertType.WARNING, tr("Не удалось сохранить отчёт: ") + ex.getMessage()).showAndWait();
         }
     }
 

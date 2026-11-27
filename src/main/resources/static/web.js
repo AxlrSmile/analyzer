@@ -1,5 +1,6 @@
 'use strict';
 
+const { t, text: uiText } = window.WebLocale;
 const byId = id => document.getElementById(id);
 const $ = {
   theme: byId('themeButton'), models: byId('modelSelect'), modelHint: byId('modelHint'),
@@ -29,14 +30,14 @@ let currentFixRequest = null;
 let fixTriageDecision = null;
 const F = window.WebFixReview;
 
-function showNotice(text, type = '') {
-  $.notice.textContent = text;
+function showNotice(message, type = '') {
+  uiText($.notice, message);
   $.notice.className = 'notice' + (type ? ' ' + type : '');
 }
 function setTheme(theme) {
   const chosen = theme === 'light' ? 'light' : 'dark';
   document.body.dataset.theme = chosen;
-  $.theme.textContent = chosen === 'light' ? '☀ Светлая' : '☾ Тёмная';
+  uiText($.theme, () => chosen === 'light' ? t('☀ Светлая') : t('☾ Тёмная'));
   try { localStorage.setItem('csa-web-theme', chosen); } catch (_) { /* optional */ }
 }
 try { setTheme(localStorage.getItem('csa-web-theme') || 'dark'); } catch (_) { setTheme('dark'); }
@@ -44,9 +45,9 @@ $.theme.addEventListener('click', () => setTheme(document.body.dataset.theme ===
 
 async function refreshModels() {
   const previous = $.models.value;
-  $.models.replaceChildren(new Option('Загрузка моделей…', ''));
+  $.models.replaceChildren(uiText(new Option('', ''), () => t('Загрузка моделей…')));
   $.models.disabled = true;
-  $.modelHint.textContent = 'Запрос к локальной Ollama…';
+  uiText($.modelHint, () => t('Запрос к локальной Ollama…'));
   try {
     const response = await fetch('/api/models');
     if (!response.ok) throw new Error('HTTP ' + response.status);
@@ -55,10 +56,10 @@ async function refreshModels() {
     $.models.replaceChildren(...names.map(name => new Option(name, name)));
     if (names.includes(previous)) $.models.value = previous;
     $.models.disabled = names.length === 0;
-    $.modelHint.textContent = 'Список от Ollama. При отключённом сервере может отображаться модель по умолчанию.';
+    uiText($.modelHint, () => t('Список от Ollama. При отключённом сервере может отображаться модель по умолчанию.'));
   } catch (_) {
-    $.models.replaceChildren(new Option('Ollama недоступна', ''));
-    $.modelHint.textContent = 'Не удалось получить модели. Запустите Ollama и обновите список.';
+    $.models.replaceChildren(uiText(new Option('', ''), () => t('Ollama недоступна')));
+    uiText($.modelHint, () => t('Не удалось получить модели. Запустите Ollama и обновите список.'));
   }
   updateScanButton();
 }
@@ -73,18 +74,18 @@ function changeFiles(fileList) {
   $.zip.value = '';
   $.selected.replaceChildren();
   if (chosenFiles.length === 0) {
-    const li = document.createElement('li'); li.className = 'empty-small'; li.textContent = 'Файлы ещё не выбраны'; $.selected.append(li);
+    const li = document.createElement('li'); li.className = 'empty-small'; uiText(li, () => t('Файлы ещё не выбраны')); $.selected.append(li);
   }
   chosenFiles.forEach(file => {
     const li = document.createElement('li');
     const name = document.createElement('span'); name.textContent = file.name;
-    const size = document.createElement('span'); size.className = 'file-size'; size.textContent = Math.round(file.size / 1024) + ' КБ';
+    const size = document.createElement('span'); size.className = 'file-size'; uiText(size, () => Math.round(file.size / 1024) + t(' КБ'));
     li.append(name, size); $.selected.append(li);
   });
   $.selectedCount.textContent = chosenFiles.length + ' / 5';
-  if (chosenFiles.length > 5) showNotice('Можно выбрать не более 5 файлов.', 'warn');
-  else if (chosenFiles.some(file => !isSourceFile(file))) showNotice('Выберите только поддерживаемые файлы исходного кода.', 'warn');
-  else showNotice('Файлы выбраны. Можно начинать анализ.');
+  if (chosenFiles.length > 5) showNotice(() => t('Можно выбрать не более 5 файлов.'), 'warn');
+  else if (chosenFiles.some(file => !isSourceFile(file))) showNotice(() => t('Выберите только поддерживаемые файлы исходного кода.'), 'warn');
+  else showNotice(() => t('Файлы выбраны. Можно начинать анализ.'));
   updateScanButton();
 }
 $.zip.addEventListener('change', () => {
@@ -96,10 +97,10 @@ $.zip.addEventListener('change', () => {
   $.selected.replaceChildren();
   const li = document.createElement('li');
   const title = document.createElement('span'); title.textContent = file.name;
-  const size = document.createElement('span'); size.textContent = Math.round(file.size / 1024) + ' КБ'; size.className = 'file-size';
+  const size = document.createElement('span'); uiText(size, () => Math.round(file.size / 1024) + t(' КБ')); size.className = 'file-size';
   li.append(title, size); $.selected.append(li);
   $.selectedCount.textContent = 'ZIP';
-  showNotice('Архив выбран. Сервер извлечёт только поддерживаемые исходники в временную папку.');
+  showNotice(() => t('Архив выбран. Сервер извлечёт только поддерживаемые исходники в временную папку.'));
   updateScanButton();
 });
 function updateScanButton() {
@@ -117,7 +118,7 @@ $.drop.addEventListener('drop', event => changeFiles(event.dataTransfer.files));
 
 function resetResults() {
   byId('filesStat').textContent = '0'; byId('findingsStat').textContent = '0';
-  byId('highStat').textContent = '0'; byId('semgrepStat').textContent = 'Не запускался';
+  byId('highStat').textContent = '0'; uiText(byId('semgrepStat'), () => t('Не запускался'));
   $.tbody.replaceChildren(); $.detail.hidden = true; $.diagnostic.hidden = true;
   $.export.disabled = true; currentReport = null; activeFile = null;
   $.sourcePane.hidden = true; $.tree.replaceChildren(); $.sourceLines.replaceChildren();
@@ -138,37 +139,38 @@ function resetFix() {
   $.fixProgress.hidden = true;
   $.fixRun.disabled = true;
   $.fixDownload.disabled = true;
-  $.fixNotice.textContent = 'Исправления модели требуют ручной проверки.';
+  uiText($.fixNotice, () => t('Исправления модели требуют ручной проверки.'));
 }
 function selectFinding(file, finding) {
   showSourceFile(file, finding);
   if (/\.java$/i.test(file.name)) {
     selectedFixTarget = { file, finding };
     $.fixWorkspace.hidden = false;
-    $.fixSelected.textContent = 'Выбрано: ' + file.name + ' · ' + (finding.title || 'находка') +
-      '. Результат модели не является подтверждённой уязвимостью.';
-    fixTriageDecision = F.triage(file, finding, D.review(finding));
+    uiText($.fixSelected, () => t('Выбрано: ') + file.name + ' · ' + (finding.title || t('находка')) +
+      t('. Результат модели не является подтверждённой уязвимостью.'));
+    const decision = F.triage(file, finding, D.review(finding));
+    fixTriageDecision = decision;
     $.fixTriage.hidden = false;
-    $.fixTriageTitle.textContent = fixTriageDecision.title;
-    $.fixTriageExplanation.textContent = fixTriageDecision.explanation;
+    uiText($.fixTriageTitle, () => t(decision.title));
+    uiText($.fixTriageExplanation, () => t(decision.explanation));
     $.fixOverride.checked = false;
     $.fixOverrideLabel.hidden = !fixTriageDecision.requiresAcknowledgment;
     updateFixGate();
   }
   $.detail.hidden = false;
-  byId('detailTitle').textContent = finding.title || 'Находка';
+  uiText(byId('detailTitle'), () => finding.title || t('Находка'));
   byId('detailOrigin').textContent = (finding.origin || '?') + ' · ' + file.name;
-  byId('detailDescription').textContent = finding.description || 'Описание отсутствует';
-  byId('detailRecommendation').textContent = finding.recommendation || 'Рекомендация отсутствует';
+  uiText(byId('detailDescription'), () => finding.description || t('Описание отсутствует'));
+  uiText(byId('detailRecommendation'), () => finding.recommendation || t('Рекомендация отсутствует'));
   const evidence = finding.evidenceDiagnostic;
-  byId('detailValidation').textContent = 'Статус: ' + (finding.validation || 'NOT_CHECKED') +
-    '. Оценка ИИ: ' + (finding.aiReview || 'NOT_REVIEWED') +
-    (finding.origin === 'LLM' && evidence ? '. Проверка цитаты: ' + evidence.reasonCode : '') +
+  uiText(byId('detailValidation'), () => t('Статус: ') + (finding.validation || 'NOT_CHECKED') +
+    t('. Оценка ИИ: ') + (finding.aiReview || 'NOT_REVIEWED') +
+    (finding.origin === 'LLM' && evidence ? t('. Проверка цитаты: ') + evidence.reasonCode : '') +
     (finding.origin === 'LLM' && evidence && evidence.cweAdvisorStatus &&
       evidence.cweAdvisorStatus !== 'NOT_ASSESSED'
-      ? '. Сверка CWE: ' + evidence.cweAdvisorStatus : '') +
-    '. Требуется ручная проверка. ' +
-    'Web 1.8: ' + D.review(finding).label + '. ' + D.review(finding).note;
+      ? t('. Сверка CWE: ') + evidence.cweAdvisorStatus : '') +
+    t('. Требуется ручная проверка. ') +
+    'Web 1.8: ' + t(D.review(finding).label) + '. ' + t(D.review(finding).note));
 }
 
 function updateFixGate() {
@@ -192,7 +194,7 @@ function showSourceFile(file, finding = null) {
   if (!file) return;
   activeFile = file;
   resetFix();
-  byId('sourceTitle').textContent = file.name + (finding ? ' · ' + (finding.origin || 'находка') : '');
+  uiText(byId('sourceTitle'), () => file.name + (finding ? ' · ' + (finding.origin || t('находка')) : ''));
   $.sourceLines.replaceChildren();
   const lines = typeof file.source === 'string' ? file.source.split(/\r?\n/) : [];
   const mark = finding ? lineNumbers(finding.lines) : new Set();
@@ -247,23 +249,23 @@ function renderLlmDiagnostics(report) {
   const show = d.llmPartial > 0 || d.llmFailed > 0 || d.details.length > 0;
   panel.hidden = !show;
   if (!show) return;
-  byId('llmDiagnosticsSummary').textContent =
-    'Завершено: ' + d.llmComplete + ' · Частично: ' + d.llmPartial +
-    ' · Ошибки: ' + d.llmFailed + '. Статус PARTIAL означает неполную проверку, а не подтверждение уязвимости.';
+  uiText(byId('llmDiagnosticsSummary'), () =>
+    t('Завершено: ') + d.llmComplete + t(' · Частично: ') + d.llmPartial +
+    t(' · Ошибки: ') + d.llmFailed + t('. Статус PARTIAL означает неполную проверку, а не подтверждение уязвимости.'));
   for (const item of d.details) {
     const article = document.createElement('article'); article.className = 'quality-issue';
     const heading = document.createElement('strong');
-    heading.textContent = item.file + ' · ' + item.title + ' · строки ' + (item.lines || 'неизвестны');
+    uiText(heading, () => item.file + ' · ' + item.title + t(' · строки ') + (item.lines || t('неизвестны')));
     const reason = document.createElement('span'); reason.className = 'quality-code';
     reason.textContent = item.status + ' · ' + item.code;
-    const description = document.createElement('p'); description.textContent = item.explanation;
+    const description = document.createElement('p'); uiText(description, () => t(item.explanation));
     const step = document.createElement('p'); step.className = 'quality-next';
-    step.textContent = 'Следующий шаг: ' + item.nextStep;
+    uiText(step, () => t('Следующий шаг: ') + t(item.nextStep));
     if (item.cweStatus && item.cweStatus !== 'NOT_ASSESSED') {
       const category = document.createElement('p'); category.className = 'quality-cwe';
-      category.textContent = 'Сверка категории CWE: ' + item.cweStatus +
-        (item.cweSuggestion ? ' · подсказка ' + item.cweSuggestion : '') +
-        '. Это рекомендация, а не подтверждение риска.';
+      uiText(category, () => t('Сверка категории CWE: ') + item.cweStatus +
+        (item.cweSuggestion ? t(' · подсказка ') + item.cweSuggestion : '') +
+        t('. Это рекомендация, а не подтверждение риска.'));
       article.append(heading, reason, description, category, step);
     } else {
       article.append(heading, reason, description, step);
@@ -272,7 +274,7 @@ function renderLlmDiagnostics(report) {
   }
   if (!d.details.length) {
     const p = document.createElement('p'); p.className = 'hint';
-    p.textContent = 'По текущим находкам подробная причина не определена. Смотрите сообщения диагностики выше.';
+    uiText(p, () => t('По текущим находкам подробная причина не определена. Смотрите сообщения диагностики выше.'));
     list.append(p);
   }
 }
@@ -293,8 +295,8 @@ function resetDashboard() {
   dash.panel.hidden = true;
   dash.query.value = '';
   for (const field of [dash.severity,dash.origin,dash.cwe,dash.review]) field.value = 'ALL';
-  dash.cwe.replaceChildren(new Option('Все CWE','ALL'));
-  dash.count.textContent = 'Фильтры применяются только к таблице — отчёт и история не изменяются.';
+  dash.cwe.replaceChildren(uiText(new Option('', 'ALL'), () => t('Все CWE')));
+  uiText(dash.count, () => t('Фильтры применяются только к таблице — отчёт и история не изменяются.'));
 }
 function renderDashboardTable() {
   const visible = D.filter(dashboardRows, {
@@ -302,13 +304,14 @@ function renderDashboardTable() {
     origin:dash.origin.value, cwe:dash.cwe.value, review:dash.review.value
   });
   dash.body.replaceChildren();
-  dash.count.textContent = 'Показано ' + visible.length + ' из ' + dashboardRows.length +
-    ' сигналов. Экспорт JSON и HTML включает все исходные сигналы.';
+  uiText(dash.count, () => t('Показано ') + visible.length + t(' из ') + dashboardRows.length +
+    t(' сигналов. Экспорт JSON и HTML включает все исходные сигналы.'));
   if (!visible.length) {
     const tr = document.createElement('tr');
-    const td = addTextCell(tr, dashboardRows.length ?
-      'По выбранным фильтрам нет сигналов. Сбросьте фильтры.' :
-      'Находок в ответе нет. Это не доказывает безопасность проверенных файлов.');
+    const td = addTextCell(tr, '');
+    uiText(td, () => dashboardRows.length ?
+      t('По выбранным фильтрам нет сигналов. Сбросьте фильтры.') :
+      t('Находок в ответе нет. Это не доказывает безопасность проверенных файлов.'));
     td.colSpan = 6; td.className = 'empty-table'; dash.body.append(tr);
     return;
   }
@@ -316,7 +319,7 @@ function renderDashboardTable() {
     const tr = document.createElement('tr'); tr.className = 'finding-row'; tr.tabIndex = 0;
     const first = document.createElement('td');
     const fname = document.createElement('span'); fname.className = 'file-name'; fname.textContent = file.name;
-    const title = document.createElement('span'); title.className = 'finding-title'; title.textContent = finding.title || 'Находка';
+    const title = document.createElement('span'); title.className = 'finding-title'; uiText(title, () => finding.title || t('Находка'));
     first.append(fname, title); tr.append(first);
     const risk = document.createElement('td'); const chip = document.createElement('span');
     chip.className = 'severity ' + (['HIGH','MEDIUM','LOW'].includes(finding.severity) ? finding.severity.toLowerCase() : 'other');
@@ -325,7 +328,8 @@ function renderDashboardTable() {
     addTextCell(tr, finding.origin || '?');
     const reviewCell = document.createElement('td');
     const flag = document.createElement('span'); flag.className = 'review-flag review-' + review.code.toLowerCase();
-    flag.textContent = review.label; flag.title = review.note;
+    uiText(flag, () => t(review.label));
+    window.WebLocale.attribute(flag, 'title', () => t(review.note));
     reviewCell.append(flag); tr.append(reviewCell);
     tr.addEventListener('click', () => selectFinding(file, finding));
     tr.addEventListener('keydown', e => { if (e.key === 'Enter') selectFinding(file, finding); });
@@ -338,8 +342,8 @@ function renderDashboard(report) {
   dash.panel.hidden = false;
   dash.query.value = '';
   for (const field of [dash.severity,dash.origin,dash.review]) field.value = 'ALL';
-  dash.cwe.replaceChildren(new Option('Все CWE','ALL'));
-  for (const value of D.options(dashboardRows.map(row => row.cwe))) dash.cwe.append(new Option(value,value));
+  dash.cwe.replaceChildren(uiText(new Option('', 'ALL'), () => t('Все CWE')));
+  for (const value of D.options(dashboardRows.map(row => row.cwe))) dash.cwe.append(uiText(new Option(value, value), () => t(value)));
   dash.llm.textContent = String(stats.byOrigin.LLM);
   dash.semgrep.textContent = String(stats.byOrigin.Semgrep);
   dash.fp.textContent = String(stats.byReview.POSSIBLE_FP);
@@ -368,7 +372,7 @@ function renderResults(report) {
   byId('filesStat').textContent = String(report.loadedFiles ?? files.length);
   byId('findingsStat').textContent = String(found.length);
   byId('highStat').textContent = String(found.filter(row => row.finding.severity === 'HIGH').length);
-  byId('semgrepStat').textContent = report.sastCompleted ? 'Завершён' : 'Не выполнен';
+  uiText(byId('semgrepStat'), () => report.sastCompleted ? t('Завершён') : t('Не выполнен'));
   $.tbody.replaceChildren(); $.detail.hidden = true;
   resetFix();
   renderTree(files);
@@ -379,16 +383,16 @@ function renderResults(report) {
   $.diagnosticList.replaceChildren();
   diagnostics.forEach(message => { const li=document.createElement('li'); li.textContent=String(message); $.diagnosticList.append(li); });
   const complete = Boolean(report.sastCompleted) && Number(report.llmFailed) === 0 && Number(report.llmPartial) === 0 && diagnostics.length === 0;
-  showNotice('Файлов: ' + (report.loadedFiles ?? files.length) + ' · LLM завершила: ' + report.llmComplete +
-    ' · Частично: ' + report.llmPartial + ' · С ошибкой: ' + report.llmFailed +
-    ' · Semgrep: ' + (report.sastCompleted ? 'выполнен' : 'не выполнен') +
-    (complete ? '. Проверьте находки вручную.' : '. Результат неполный — изучите диагностику.'), complete ? '' : 'warn');
+  showNotice(() => t('Файлов: ') + (report.loadedFiles ?? files.length) + t(' · LLM завершила: ') + report.llmComplete +
+    t(' · Частично: ') + report.llmPartial + t(' · С ошибкой: ') + report.llmFailed +
+    ' · Semgrep: ' + (report.sastCompleted ? t('выполнен') : t('не выполнен')) +
+    (complete ? t('. Проверьте находки вручную.') : t('. Результат неполный — изучите диагностику.')), complete ? '' : 'warn');
 }
 $.scan.addEventListener('click', async () => {
   if (scanning || $.scan.disabled) return;
-  scanning = true; updateScanButton(); $.scan.textContent = 'Выполняется анализ…'; resetResults();
+  scanning = true; updateScanButton(); uiText($.scan, () => t('Выполняется анализ…')); resetResults();
   $.progress.hidden = false;
-  showNotice('Анализ запущен. Ollama может обрабатывать выбранные файлы несколько минут.');
+  showNotice(() => t('Анализ запущен. Ollama может обрабатывать выбранные файлы несколько минут.'));
   const scanMeta = { model:$.models.value, inputKind:chosenZip ? 'ZIP' : 'FILES' };
   const data = new FormData(); data.append('model', $.models.value);
   if (chosenZip) data.append('archive', chosenZip, chosenZip.name);
@@ -396,15 +400,15 @@ $.scan.addEventListener('click', async () => {
   try {
     const resp = await fetch(chosenZip ? '/api/scan-zip' : '/api/scan', {method:'POST', headers:{'X-Code-Analyzer':'web1'}, body:data});
     let json = null; try { json = await resp.json(); } catch (_) { /* fallback */ }
-    if (!resp.ok) throw new Error(json?.error || json?.detail || json?.message || 'Ошибка HTTP ' + resp.status);
+    if (!resp.ok) throw new Error(json?.error || json?.detail || json?.message || t('Ошибка HTTP ') + resp.status);
     renderResults(json);
     updateInsightsFromReport(json, scanMeta);
   } catch (error) {
     updateInsightsFromFailure(scanMeta);
-    showNotice('Анализ не завершён: ' + error.message, 'error');
-    const tr = document.createElement('tr'); const td = addTextCell(tr, 'Нет достоверных результатов этого запуска.');
+    showNotice(() => t('Анализ не завершён: ') + t(error.message), 'error');
+    const tr = document.createElement('tr'); const td = uiText(addTextCell(tr, ''), () => t('Нет достоверных результатов этого запуска.'));
     td.colSpan = 6; td.className = 'empty-table'; $.tbody.replaceChildren(tr);
-  } finally { scanning = false; $.progress.hidden = true; $.scan.textContent = 'Запустить анализ'; updateScanButton(); }
+  } finally { scanning = false; $.progress.hidden = true; uiText($.scan, () => t('Запустить анализ')); updateScanButton(); }
 });
 $.fixRun.addEventListener('click', async () => {
   if (!selectedFixTarget || fixBusy || !$.models.value) return;
@@ -416,7 +420,7 @@ $.fixRun.addEventListener('click', async () => {
   $.fixDownload.disabled = true;
   $.fixResult.hidden = true;
   $.fixProgress.hidden = false;
-  $.fixNotice.textContent = 'Генерация и проверки выполняются в отдельных временных каталогах. Оригинал не меняется.';
+  uiText($.fixNotice, () => t('Генерация и проверки выполняются в отдельных временных каталогах. Оригинал не меняется.'));
   try {
     const request = {
       fileName: file.name, source: file.source, model: $.models.value,
@@ -432,7 +436,7 @@ $.fixRun.addEventListener('click', async () => {
     });
     let result = null;
     try { result = await response.json(); } catch (_) { /* empty response */ }
-    if (!response.ok) throw new Error(result?.error || 'Ошибка HTTP ' + response.status);
+    if (!response.ok) throw new Error(result?.error || t('Ошибка HTTP ') + response.status);
     currentFix = result;
     currentFixRequest = F.protocolInput(file, finding, request.model);
     $.fixProtocol.disabled = false;
@@ -443,26 +447,29 @@ $.fixRun.addEventListener('click', async () => {
     byId('fixSemgrep').textContent = result.semgrep?.status === 'COMPLETED'
       ? String(result.semgrep.before) + ' → ' + String(result.semgrep.after)
       : 'NOT_CHECKED';
-    byId('fixSemgrepNote').textContent = result.semgrep?.details || '';
+    uiText(byId('fixSemgrepNote'), () => t(result.semgrep?.details || ''));
     byId('fixOriginal').textContent = result.original || '';
     byId('fixProposed').textContent = result.proposed || '';
-    byId('fixDiff').textContent = result.diff || '';
+    uiText(byId('fixDiff'), () => {
+      const [heading, ...lines] = (result.diff || '').split('\n');
+      return [t(heading), ...lines].join('\n');
+    });
     byId('fixValidation').textContent = result.validationDetails || '';
-    byId('fixNotes').textContent = result.notes || '';
+    uiText(byId('fixNotes'), () => t(result.notes || ''));
     const assessment = F.assess(result);
     $.fixAssessment.dataset.kind = assessment.code;
     $.fixAssessment.replaceChildren();
-    const heading = document.createElement('strong'); heading.textContent = assessment.title;
-    const explanation = document.createElement('p'); explanation.textContent = assessment.explanation;
+    const heading = document.createElement('strong'); uiText(heading, () => t(assessment.title));
+    const explanation = document.createElement('p'); uiText(explanation, () => t(assessment.explanation));
     $.fixAssessment.append(heading, explanation);
-    $.fixNotice.textContent = result.overall === 'PASSED'
-      ? 'Предложение прошло предварительную проверку Java. Выполните функциональные тесты и ручное ревью.'
-      : 'Предложение не прошло все проверки Java или требует дополнительных зависимостей. Не используйте его без ревью.';
+    uiText($.fixNotice, () => result.overall === 'PASSED'
+      ? t('Предложение прошло предварительную проверку Java. Выполните функциональные тесты и ручное ревью.')
+      : t('Предложение не прошло все проверки Java или требует дополнительных зависимостей. Не используйте его без ревью.'));
     $.fixDownload.disabled = typeof result.proposed !== 'string' || !result.proposed;
     await recordFixAttempt({file, finding}, request.model, result);
     $.fixResult.scrollIntoView({block:'nearest'});
   } catch (error) {
-    $.fixNotice.textContent = 'Предложение не создано: ' + error.message + '. Исходный файл не изменён.';
+    uiText($.fixNotice, () => t('Предложение не создано: ') + t(error.message) + t('. Исходный файл не изменён.'));
     await recordFixAttempt({file, finding}, $.models.value, null);
   } finally {
     fixBusy = false;
@@ -520,7 +527,7 @@ try { journalRows = J.load(localStorage); }
 catch (_) { journalStorageAvailable = false; }
 function journalPersist() {
   try { journalRows = J.save(localStorage, journalRows); journalStorageAvailable = true; return true; }
-  catch (_) { journalStorageAvailable = false; je.notice.textContent = 'Не удалось сохранить в браузере. Экспортируйте CSV/JSON, пока страница открыта.'; return false; }
+  catch (_) { journalStorageAvailable = false; uiText(je.notice, () => t('Не удалось сохранить в браузере. Экспортируйте CSV/JSON, пока страница открыта.')); return false; }
 }
 function journalCell(tr, value, css = '') {
   const td = document.createElement('td'); td.textContent = String(value ?? '—');
@@ -532,8 +539,8 @@ function journalChoose(id) {
   if (!record) return;
   journalActive = id;
   je.editor.hidden = false;
-  je.selected.textContent = record.fileName + ' · ' + record.model + ' · ' +
-    (record.proposalSha256 ? 'SHA-256 ' + record.proposalSha256 : 'Предложение не сформировано');
+  uiText(je.selected, () => record.fileName + ' · ' + record.model + ' · ' +
+    (record.proposalSha256 ? 'SHA-256 ' + record.proposalSha256 : t('Предложение не сформировано')));
   je.name1.value = record.scenario1Name;
   je.test1.value = record.scenario1;
   je.name2.value = record.scenario2Name;
@@ -544,10 +551,10 @@ function journalChoose(id) {
 }
 function journalRender() {
   je.body.replaceChildren();
-  je.count.textContent = journalRows.length + ' записей · локально в браузере';
+  uiText(je.count, () => journalRows.length + t(' записей · локально в браузере'));
   je.csv.disabled = je.json.disabled = je.clear.disabled = journalRows.length === 0;
   if (!journalRows.length) {
-    const tr = document.createElement('tr'); const td = journalCell(tr, 'Журнал пока пуст.', 'journal-empty');
+    const tr = document.createElement('tr'); const td = uiText(journalCell(tr, '', 'journal-empty'), () => t('Журнал пока пуст.'));
     td.colSpan = 7; je.body.append(tr);
     je.editor.hidden = true; journalActive = null;
   }
@@ -556,7 +563,7 @@ function journalRender() {
     if (journalActive === record.id) tr.className = 'journal-row-active';
     const date = journalCell(tr, record.fileName);
     const sub = document.createElement('small'); sub.className = 'journal-small';
-    sub.textContent = new Date(record.createdAt).toLocaleString('ru-RU'); date.append(sub);
+    uiText(sub, () => new Date(record.createdAt).toLocaleString(window.WebLocale.language)); date.append(sub);
     journalCell(tr, record.model || '—');
     journalCell(tr, record.compilation + ' / ' + record.api);
     journalCell(tr, record.semgrepStatus === 'COMPLETED'
@@ -565,8 +572,8 @@ function journalRender() {
     const status = J.outcome(record);
     journalCell(tr, status, 'journal-status ' + (status === 'MANUAL_REPORTED_PASSED' ? 'manual' : status === 'REJECTED' ? 'rejected' : ''));
     const td = document.createElement('td'); const btn = document.createElement('button');
-    btn.type = 'button'; btn.className = 'secondary-btn'; btn.textContent = 'Открыть';
-    btn.setAttribute('aria-label', 'Редактировать ручные проверки для ' + record.fileName);
+    btn.type = 'button'; btn.className = 'secondary-btn'; uiText(btn, () => t('Открыть'));
+    window.WebLocale.attribute(btn, 'aria-label', () => t('Редактировать ручные проверки для ') + record.fileName);
     btn.addEventListener('click', () => journalChoose(record.id)); td.append(btn); tr.append(td);
     je.body.append(tr);
   });
@@ -585,11 +592,11 @@ async function recordFixAttempt(target, model, response) {
     const saved = journalPersist();
     journalRender();
     journalChoose(record.id);
-    if (saved) je.notice.textContent = response
-      ? 'Попытка записана. Функциональные тесты пока NOT_CHECKED. Подтвердите их вручную по внешнему логу.'
-      : 'Неудачная генерация записана как REJECTED. Оригинал не изменён.';
+    if (saved) uiText(je.notice, () => response
+      ? t('Попытка записана. Функциональные тесты пока NOT_CHECKED. Подтвердите их вручную по внешнему логу.')
+      : t('Неудачная генерация записана как REJECTED. Оригинал не изменён.'));
   } catch (_) {
-    je.notice.textContent = 'Не удалось записать попытку в журнал. Проверьте хранилище браузера.';
+    uiText(je.notice, () => t('Не удалось записать попытку в журнал. Проверьте хранилище браузера.'));
   }
 }
 je.save.addEventListener('click', () => {
@@ -598,7 +605,7 @@ je.save.addEventListener('click', () => {
   // Filename only, not absolute paths. The log itself is not copied or read.
   const evidence = String(je.evidence.value || '').split(/[\\/]/).pop().trim();
   if ((je.test1.value === 'PASSED' || je.test2.value === 'PASSED') && !evidence) {
-    je.notice.textContent = 'Для отметки PASSED укажи имя файла внешнего тестового лога. Сам сайт функциональные тесты не выполняет.';
+    uiText(je.notice, () => t('Для отметки PASSED укажи имя файла внешнего тестового лога. Сам сайт функциональные тесты не выполняет.'));
     je.evidence.focus(); return;
   }
   const edited = J.clean({
@@ -610,9 +617,9 @@ je.save.addEventListener('click', () => {
   });
   journalRows = journalRows.map(r => r.id === journalActive ? edited : r);
   const saved = journalPersist(); journalRender();
-  je.notice.textContent = saved
-    ? 'Ручная оценка сохранена. Статусы отражают запись пользователя, а не запуск тестов на сайте.'
-    : 'Изменения доступны только до закрытия вкладки. Экспортируйте журнал.';
+  uiText(je.notice, () => saved
+    ? t('Ручная оценка сохранена. Статусы отражают запись пользователя, а не запуск тестов на сайте.')
+    : t('Изменения доступны только до закрытия вкладки. Экспортируйте журнал.'));
 });
 function journalDownload(filename, content, mime) {
   const blob = new Blob([content], {type:mime});
@@ -629,9 +636,9 @@ je.json.addEventListener('click', () => {
     J.toJson(journalRows), 'application/json;charset=utf-8');
 });
 je.clear.addEventListener('click', () => {
-  if (!journalRows.length || !window.confirm('Удалить локальный журнал? Экспортируйте его перед очисткой.')) return;
+  if (!journalRows.length || !window.confirm(t('Удалить локальный журнал? Экспортируйте его перед очисткой.'))) return;
   journalRows = []; journalActive = null; const saved = journalPersist(); journalRender();
-  je.notice.textContent = saved ? 'Локальный журнал очищен.' : 'Очистка не сохранена. Проверьте настройки браузера.';
+  uiText(je.notice, () => saved ? t('Локальный журнал очищен.') : t('Очистка не сохранена. Проверьте настройки браузера.'));
 });
 journalRender();
 
@@ -648,7 +655,7 @@ const si = {
 };
 let scanHistoryRows = [];
 try { scanHistoryRows = I.load(localStorage); }
-catch (_) { si.notice.textContent = 'История не загружена: хранилище браузера недоступно.'; }
+catch (_) { uiText(si.notice, () => t('История не загружена: хранилище браузера недоступно.')); }
 function resetInsightsCurrent() {
   lastScanMeta = null; si.html.disabled = true;
   si.panel.hidden = true;
@@ -658,7 +665,7 @@ function resetInsightsCurrent() {
 function insightsBars(container, entries) {
   container.replaceChildren();
   if (!entries.length || !entries.some(([,n]) => n > 0)) {
-    const p = document.createElement('p'); p.className = 'hint'; p.textContent = 'Нет сигналов для отображения.';
+    const p = document.createElement('p'); p.className = 'hint'; uiText(p, () => t('Нет сигналов для отображения.'));
     container.append(p); return;
   }
   const largest = Math.max(1,...entries.map(([,n])=>n));
@@ -666,7 +673,7 @@ function insightsBars(container, entries) {
     if (count <= 0) return;
     const row = document.createElement('div'); row.className = 'insights-bar-row';
     const cap = document.createElement('div'); cap.className = 'insights-bar-caption';
-    const text = document.createElement('span'); text.textContent = label;
+    const text = document.createElement('span'); uiText(text, () => t(label));
     const qty = document.createElement('strong'); qty.textContent = String(count);
     cap.append(text,qty);
     const track = document.createElement('div'); track.className = 'insights-bar-track';
@@ -684,7 +691,7 @@ function renderCurrentInsights(report) {
   si.pairs.replaceChildren();
   if (!data.related.length) {
     const empty = document.createElement('p'); empty.className = 'hint';
-    empty.textContent = 'Близких сигналов с распознанной общей категорией пока нет. Это не означает отсутствие уязвимостей.';
+    uiText(empty, () => t('Близких сигналов с распознанной общей категорией пока нет. Это не означает отсутствие уязвимостей.'));
     si.pairs.append(empty);
   }
   for (const pair of data.related) {
@@ -695,7 +702,7 @@ function renderCurrentInsights(report) {
     const actions = document.createElement('div'); actions.className = 'insights-pair-actions';
     for (const [label,finding] of [['Посмотреть LLM',pair.llm],['Посмотреть Semgrep',pair.semgrep]]) {
       const button = document.createElement('button'); button.type = 'button';
-      button.className = 'secondary-btn'; button.textContent = label;
+      button.className = 'secondary-btn'; uiText(button, () => t(label));
       button.addEventListener('click', () => {
         selectFinding(pair.file, finding);
         si.panel.scrollIntoView({block:'nearest'});
@@ -708,7 +715,7 @@ function renderCurrentInsights(report) {
 function scanHistoryPersist() {
   try { scanHistoryRows = I.save(localStorage, scanHistoryRows); return true; }
   catch (_) {
-    si.notice.textContent = 'Хранилище браузера недоступно: экспортируйте историю, не закрывая вкладку.';
+    uiText(si.notice, () => t('Хранилище браузера недоступно: экспортируйте историю, не закрывая вкладку.'));
     return false;
   }
 }
@@ -718,7 +725,7 @@ function scanHistoryCell(row, text) {
 }
 function renderScanHistory() {
   si.body.replaceChildren();
-  si.count.textContent = scanHistoryRows.length+' запусков · локально в браузере';
+  uiText(si.count, () => scanHistoryRows.length+t(' запусков · локально в браузере'));
   si.csv.disabled = si.json.disabled = si.clear.disabled = !scanHistoryRows.length;
   si.modelsPanel.hidden = scanHistoryRows.length === 0;
   si.modelsBody.replaceChildren();
@@ -729,20 +736,20 @@ function renderScanHistory() {
     si.modelsBody.append(tr);
   }
   if (!scanHistoryRows.length) {
-    const tr = document.createElement('tr'); const td = scanHistoryCell(tr,'История пока пуста.');
+    const tr = document.createElement('tr'); const td = uiText(scanHistoryCell(tr, ''), () => t('История пока пуста.'));
     td.colSpan = 9; td.className = 'scan-history-empty'; si.body.append(tr);
     return;
   }
   scanHistoryRows.forEach(rec => {
     const tr = document.createElement('tr');
-    const date = scanHistoryCell(tr, new Date(rec.createdAt).toLocaleString('ru-RU'));
+    const date = uiText(scanHistoryCell(tr, ''), () => new Date(rec.createdAt).toLocaleString(window.WebLocale.language));
     const kind = document.createElement('small'); kind.className = 'scan-history-kind';
     kind.textContent = rec.inputKind; date.append(kind);
     scanHistoryCell(tr,rec.model||'—');
     scanHistoryCell(tr,rec.loadedFiles); scanHistoryCell(tr,rec.signals);
     scanHistoryCell(tr,rec.highSignals);
     scanHistoryCell(tr,rec.llmComplete+' / '+rec.llmPartial+' / '+rec.llmFailed);
-    scanHistoryCell(tr,rec.semgrepCompleted?'Завершён':'Не завершён');
+    uiText(scanHistoryCell(tr, ''), () => rec.semgrepCompleted ? t('Завершён') : t('Не завершён'));
     scanHistoryCell(tr,rec.relatedPairs);
     const st = scanHistoryCell(tr,rec.status); st.className = 'scan-history-status status-'+rec.status.toLowerCase();
     si.body.append(tr);
@@ -752,17 +759,17 @@ function recordScanHistory(row) {
   if (!row) return;
   scanHistoryRows.unshift(row); scanHistoryRows = scanHistoryRows.slice(0,I.MAX_ROWS);
   const saved = scanHistoryPersist(); renderScanHistory();
-  if (saved) si.notice.textContent = row.status === 'ERROR'
-    ? 'Неудачный запуск записан без текста ошибки и исходного кода.'
-    : 'Метаданные сканирования сохранены. Статус не является оценкой безопасности кода.';
+  if (saved) uiText(si.notice, () => row.status === 'ERROR'
+    ? t('Неудачный запуск записан без текста ошибки и исходного кода.')
+    : t('Метаданные сканирования сохранены. Статус не является оценкой безопасности кода.'));
 }
 function updateInsightsFromReport(report, meta) {
   try { lastScanMeta = {...meta}; si.html.disabled = false; renderCurrentInsights(report); recordScanHistory(I.fromReport(report, meta.model, meta.inputKind)); }
-  catch (_) { si.notice.textContent = 'Ошибка локальной аналитики. Основные результаты анализа доступны выше.'; }
+  catch (_) { uiText(si.notice, () => t('Ошибка локальной аналитики. Основные результаты анализа доступны выше.')); }
 }
 function updateInsightsFromFailure(meta) {
   try { resetInsightsCurrent(); recordScanHistory(I.fromFailure(meta.model, meta.inputKind)); }
-  catch (_) { si.notice.textContent = 'Не удалось записать неудачный запуск.'; }
+  catch (_) { uiText(si.notice, () => t('Не удалось записать неудачный запуск.')); }
 }
 function scanHistoryDownload(filename,body,mime) {
   const blob = new Blob([body],{type:mime});
@@ -784,9 +791,9 @@ si.json.addEventListener('click',()=>{
     I.toJson(scanHistoryRows),'application/json;charset=utf-8');
 });
 si.clear.addEventListener('click',()=>{
-  if (!scanHistoryRows.length || !window.confirm('Очистить локальную историю запусков? Сначала экспортируйте CSV/JSON.')) return;
+  if (!scanHistoryRows.length || !window.confirm(t('Очистить локальную историю запусков? Сначала экспортируйте CSV/JSON.'))) return;
   scanHistoryRows = []; const saved=scanHistoryPersist(); renderScanHistory();
-  si.notice.textContent = saved ? 'История очищена.' : 'Очистка пока только в памяти браузера.';
+  uiText(si.notice, () => saved ? t('История очищена.') : t('Очистка пока только в памяти браузера.'));
 });
 renderScanHistory();
 

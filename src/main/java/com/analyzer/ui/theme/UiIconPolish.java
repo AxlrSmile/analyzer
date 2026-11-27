@@ -1,5 +1,6 @@
 package com.analyzer.ui.theme;
 
+import com.analyzer.ui.UiLanguage;
 import javafx.animation.ScaleTransition;
 import javafx.application.Platform;
 import javafx.geometry.Pos;
@@ -174,11 +175,12 @@ public final class UiIconPolish {
         @Override
         protected void updateItem(String item, boolean empty) {
             super.updateItem(item, empty);
+            textProperty().unbind();
             if (empty || item == null) {
                 setText(null);
                 setGraphic(null);
             } else {
-                setText(item);
+                textProperty().bind(UiLanguage.localized(() -> UiLanguage.tr(item)));
                 setGraphic(icon("Тёмная".equals(item) ? "moon" : "sun", 17));
             }
         }

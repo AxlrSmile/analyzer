@@ -1,5 +1,6 @@
 package com.analyzer.ui.theme;
 
+import com.analyzer.ui.UiLanguage;
 import javafx.application.Platform;
 import javafx.collections.ListChangeListener;
 import javafx.beans.property.SimpleStringProperty;
@@ -143,7 +144,9 @@ public final class UiAppearanceManager {
         chooser.setMinWidth(110);
         chooser.setOnAction(e -> selectTheme("Тёмная".equals(chooser.getValue()) ? DARK : LIGHT));
 
-        header.getChildren().addAll(brand, spacer, caption, chooser);
+        header.getChildren().addAll(brand, spacer);
+        UiLanguage.addChooser(header);
+        header.getChildren().addAll(caption, chooser);
         root.getChildren().add(0, header);
     }
 

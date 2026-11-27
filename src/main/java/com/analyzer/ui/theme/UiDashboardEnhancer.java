@@ -1,5 +1,6 @@
 package com.analyzer.ui.theme;
 
+import com.analyzer.ui.UiLanguage;
 import com.analyzer.domain.model.Vulnerability;
 import javafx.application.Platform;
 import javafx.collections.ListChangeListener;
@@ -88,6 +89,10 @@ public final class UiDashboardEnhancer {
         styleFindingsTable();
         updatePlaceholders();
         connectCounters();
+        UiLanguage.languageProperty().addListener((obs, previous, next) -> {
+            refreshTableCounters();
+            refreshModelLabel();
+        });
         connectWebViews();
         scene.getStylesheets().addListener((ListChangeListener<String>) change -> {
             // The old theme manager swaps light/dark CSS; sync HTML on the FX thread.
@@ -273,12 +278,13 @@ public final class UiDashboardEnhancer {
         }
         findingsValue.setText(Integer.toString(count));
         highValue.setText(Integer.toString(high));
-        tableStatus.setText("Текущая таблица: " + count + " находок");
+        tableStatus.setText(UiLanguage.format("Текущая таблица: {0} находок", count));
     }
 
     private void refreshModelLabel() {
         Object value = modelSelector == null ? null : modelSelector.getValue();
-        modelStatus.setText("Модель: " + (value == null ? "не выбрана" : value.toString()));
+        modelStatus.setText(value == null ? UiLanguage.tr("Модель: не выбрана")
+                : UiLanguage.format("Модель: {0}", value));
     }
 
     private void connectWebViews() {

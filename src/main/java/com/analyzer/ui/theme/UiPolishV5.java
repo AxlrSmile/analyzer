@@ -1,5 +1,6 @@
 package com.analyzer.ui.theme;
 
+import com.analyzer.ui.UiLanguage;
 import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.collections.ListChangeListener;
@@ -123,6 +124,7 @@ public final class UiPolishV5 {
             });
             search.textProperty().addListener((obs, oldValue, newValue) -> debounce.playFromStart());
             onlySources.selectedProperty().addListener((obs, oldValue, newValue) -> applyFilter());
+            UiLanguage.languageProperty().addListener((obs, previous, next) -> refreshCounter());
             debounce.setOnFinished(event -> applyFilter());
         }
         createFilterControls();
@@ -300,7 +302,7 @@ public final class UiPolishV5 {
         if (filesNote != null) filesNote.setText(filterActive()
                 ? "Отображаемые файлы (не число проверенных)"
                 : "Все файлы дерева (не число проверенных)");
-        found.setText(filterActive() ? "Показано файлов: " + n : "Файлов в дереве: " + n);
+        found.setText(UiLanguage.format(filterActive() ? "Показано файлов: {0}" : "Файлов в дереве: {0}", n));
     }
 
     private static int countFiles(TreeItem<File> root) {

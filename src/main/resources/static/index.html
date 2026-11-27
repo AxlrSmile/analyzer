@@ -6,6 +6,8 @@
   <meta name="color-scheme" content="dark light">
   <title>Code Security Analyzer — Web 1.8</title>
   <link rel="stylesheet" href="/web.css">
+  <script src="/web-languages.js" defer></script>
+  <script src="/web-locale.js" defer></script>
   <script src="/web-journal.js" defer></script>
   <script src="/web-insights.js" defer></script>
   <script src="/web-diagnostics.js" defer></script>
@@ -24,6 +26,11 @@
       </div>
       <div class="head-actions">
         <span class="local-pill"><span class="dot"></span> LOCALHOST ONLY</span>
+        <select id="languageSelect" class="language-select" aria-label="Язык интерфейса" title="Язык интерфейса">
+          <option value="ru" lang="ru">Русский</option>
+          <option value="en" lang="en">English</option>
+          <option value="kk" lang="kk">Қазақша</option>
+        </select>
         <button id="themeButton" class="ghost-btn" type="button" title="Переключить тему" aria-label="Переключить тему">☾ Тёмная</button>
       </div>
     </header>

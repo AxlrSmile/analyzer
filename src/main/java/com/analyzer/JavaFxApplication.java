@@ -1,6 +1,7 @@
 package com.analyzer;
 
 import com.analyzer.config.SpringFXMLLoader;
+import com.analyzer.ui.UiLanguage;
 import com.analyzer.ui.theme.UiDashboardEnhancer;
 import com.analyzer.ui.theme.UiIconPolish;
 import com.analyzer.ui.theme.UiContrastRepair;
@@ -41,6 +42,7 @@ public class JavaFxApplication extends Application {
         UiIconPolish.install(primaryStage, root);
         UiContrastRepair.install(primaryStage, root);
         UiPolishV5.install(primaryStage, root);
+        UiLanguage.install(primaryStage, root);
         primaryStage.show();
     }
 
