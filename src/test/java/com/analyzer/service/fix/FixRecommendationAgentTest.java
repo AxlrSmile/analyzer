@@ -75,6 +75,14 @@ class FixRecommendationAgentTest {
         verifyNoInteractions(ollama);
     }
 
+    @Test void stripsEchoedSourceMarkers() throws Exception {
+        assertEquals("class A {}", FixRecommendationAgent.extractCode("[BEGIN SOURCE]\nclass A {}\n[END SOURCE]"));
+        assertEquals("class A {}", FixRecommendationAgent.extractCode("```java\n[BEGIN SOURCE]\nclass A {}\n[END SOURCE]\n```"));
+        assertEquals("class A {}", FixRecommendationAgent.extractCode("[BEGIN SOURCE]\nclass A {}"));
+        assertThrows(IOException.class, () -> FixRecommendationAgent.extractCode("class A {}\n[BEGIN SOURCE]\nclass B {}"));
+        assertThrows(IOException.class, () -> FixRecommendationAgent.extractCode("[BEGIN SOURCE]\n[END SOURCE]"));
+    }
+
     @Test void extractOnlySingleCodeBlock() throws Exception {
         assertEquals("class A {}", FixRecommendationAgent.extractCode("```java\nclass A {}\n```"));
         assertEquals("class A {}", FixRecommendationAgent.extractCode("class A {}"));
