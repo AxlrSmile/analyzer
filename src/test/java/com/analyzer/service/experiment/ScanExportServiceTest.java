@@ -71,6 +71,7 @@ class ScanExportServiceTest {
         assertTrue(csv.contains("\"CWE-89\""));
         assertTrue(csv.contains("\"mechanismStatus\""));
         assertTrue(csv.contains("\"cweSuggestion\""));
+        assertTrue(csv.startsWith("\uFEFF"), "CSV must start with a UTF-8 BOM for Excel");
         assertEquals(4, csv.lines().count());
     }
 
