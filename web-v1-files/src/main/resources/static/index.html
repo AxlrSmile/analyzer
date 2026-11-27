@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Code Security Analyzer — Web 1.0</title>
+  <link rel="stylesheet" href="/web.css">
+  <script src="/web.js" defer></script>
+</head>
+<body data-theme="dark">
+  <div class="app">
+    <header class="header">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 2.5 20 6v5.8c0 5.1-3.6 8.2-8 10.2-4.4-2-8-5.1-8-10.2V6l8-3.5Z"/><path d="m8.5 12 2.4 2.4 4.8-5"/></svg>
+        </div>
+        <div><strong>Code Security Analyzer</strong><span>DevSecOps · Web 1.0</span></div>
+      </div>
+      <div class="head-actions">
+        <span class="local-pill"><span class="dot"></span> LOCALHOST ONLY</span>
+        <button id="themeButton" class="ghost-btn" type="button" title="Переключить тему" aria-label="Переключить тему">☾ Тёмная</button>
+      </div>
+    </header>
+
+    <nav class="navigation" aria-label="Разделы"><span class="nav-active">Аудит исходного кода</span><span class="nav-passive">LLM + Semgrep</span></nav>
+
+    <section class="intro">
+      <div><div class="eyebrow">SECURITY WORKSPACE</div><h1>Проверка исходного кода</h1><p>Локальный анализ нескольких исходников без выполнения пользовательского кода. Находки требуют ручной проверки.</p></div>
+      <div class="intro-badge"><span class="badge-dot"></span> Прототип для диплома</div>
+    </section>
+
+    <section class="stats" aria-label="Статистика анализа">
+      <article class="stat"><span>Загружено файлов</span><strong id="filesStat">0</strong><small>Текущий запрос</small></article>
+      <article class="stat"><span>Находок в ответе</span><strong id="findingsStat">0</strong><small>Не равно доказанным уязвимостям</small></article>
+      <article class="stat"><span>Высокий риск</span><strong id="highStat">0</strong><small>По заявленной критичности</small></article>
+      <article class="stat"><span>Semgrep</span><strong class="stat-word" id="semgrepStat">Не запускался</strong><small>Отдельный SAST-сигнал</small></article>
+    </section>
+
+    <main class="layout">
+      <section class="panel configure">
+        <div class="panel-header"><div><span class="panel-label">01 / НАСТРОЙКА</span><h2>Источник и модель</h2></div></div>
+        <div class="field"><label for="modelSelect">Локальная модель Ollama</label><div class="select-line"><select id="modelSelect" aria-label="Модель Ollama"><option>Загрузка моделей…</option></select><button class="icon-btn" type="button" id="refreshModels" title="Обновить модели" aria-label="Обновить модели">↻</button></div><p class="hint" id="modelHint">Запустите Ollama перед анализом.</p></div>
+        <div class="field"><label>Файлы проекта</label>
+          <div id="dropZone" class="drop-zone" tabindex="0" role="button" aria-label="Выбрать исходные файлы"><div class="drop-icon">&lt;/&gt;</div><strong>Перетащите исходники сюда</strong><span>или нажмите для выбора</span><small>Java, Python, JS/TS, Go, C/C++ и другие · до 5 файлов · до 256 КБ каждый</small></div>
+          <input id="filesInput" type="file" multiple accept=".java,.kt,.scala,.c,.h,.cpp,.cc,.cxx,.hpp,.py,.js,.mjs,.jsx,.ts,.tsx,.php,.rb,.go,.rs,.cs,.sql" hidden>
+        </div>
+        <div class="selected-title">Выбранные файлы <span id="selectedCount">0 / 5</span></div>
+        <ul class="selected-list" id="selectedList"><li class="empty-small">Файлы ещё не выбраны</li></ul>
+        <button id="scanButton" type="button" class="primary-btn" disabled>Запустить анализ</button>
+        <p class="disclaimer">Исходники анализируются на этом компьютере. Результаты LLM и Semgrep не являются доказательством безопасности. Файлы удаляются из временного каталога после запроса.</p>
+      </section>
+
+      <section class="panel results">
+        <div class="panel-header results-heading"><div><span class="panel-label">02 / РЕЗУЛЬТАТ</span><h2>Находки и проверка</h2></div><button class="secondary-btn" type="button" id="exportButton" disabled>Экспорт JSON</button></div>
+        <div id="notice" class="notice" role="status" aria-live="polite">Выберите несколько исходников и нажмите «Запустить анализ».</div>
+        <div id="diagnostics" class="diagnostics" hidden><strong>Диагностика и ограничения</strong><ul id="diagnosticsList"></ul></div>
+        <div class="table-box"><table><thead><tr><th>Файл и находка</th><th>Риск</th><th>CWE</th><th>Строки</th><th>Источник</th></tr></thead><tbody id="findingsBody"><tr><td colspan="5" class="empty-table">Пока нет результатов анализа</td></tr></tbody></table></div>
+        <div class="finding-details" id="findingDetails" hidden><div class="details-head"><h3 id="detailTitle"></h3><span class="source-chip" id="detailOrigin"></span></div><div class="detail-grid"><div><span>Описание</span><p id="detailDescription"></p></div><div><span>Рекомендация</span><p id="detailRecommendation"></p></div></div><p id="detailValidation" class="detail-note"></p></div>
+      </section>
+    </main>
+    <footer class="footer"><span>Code Security Analyzer · исследовательский прототип</span><span>127.0.0.1:8080 · Доступ только с этого компьютера</span></footer>
+  </div>
+</body>
+</html>

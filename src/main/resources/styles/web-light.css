@@ -1,0 +1,16 @@
+/* JavaFX WebView HTML overlay: readable in the light theme too. */
+html, body { background: #ffffff !important; color: #223047 !important; }
+body { font-family: 'Segoe UI', Arial, sans-serif !important; }
+h1,h2,h3,h4,h5,h6,p,li,blockquote,span { color: inherit !important; }
+a { color: #2257a5 !important; }
+.msg { color: #223047 !important; }
+.msg.user { background: #e8f2ff !important; border-left: 4px solid #3679d3 !important; }
+.msg.ai { background: #f7faff !important; border-left: 4px solid #269a68 !important; }
+.msg.system { background: #fff5e6 !important; border-left: 4px solid #e39a40 !important; }
+.log { color: #223047 !important; }
+pre { background: #233046 !important; color: #f0f5ff !important; border: 1px solid #c3d1e2 !important; }
+code { background: #e8eef8 !important; color: #253c68 !important; }
+pre code { background: transparent !important; color: #f0f5ff !important; }
+blockquote { border-left: 3px solid #94a7c0 !important; }
+th, td { border-color: #d8e2ef !important; color: #223047 !important; }
+input, textarea { background: #ffffff !important; color: #223047 !important; }

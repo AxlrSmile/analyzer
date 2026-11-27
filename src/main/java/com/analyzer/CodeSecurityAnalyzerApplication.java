@@ -7,7 +7,13 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class CodeSecurityAnalyzerApplication {
 
     public static void main(String[] args) {
-        // Вместо SpringApplication.run() передаем управление JavaFX
+        if (java.util.Arrays.asList(args).contains("--web")) {
+            String[] webArgs = java.util.Arrays.stream(args)
+                    .filter(arg -> !"--web".equals(arg))
+                    .toArray(String[]::new);
+            com.analyzerweb.WebServerApplication.start(webArgs);
+            return;
+        }
         Application.launch(JavaFxApplication.class, args);
     }
 }

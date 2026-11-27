@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Code Security Analyzer — Web 1.6</title>
+  <link rel="stylesheet" href="/web.css">
+  <script src="/web-journal.js" defer></script>
+  <script src="/web-insights.js" defer></script>
+  <script src="/web-diagnostics.js" defer></script>
+  <script src="/web.js" defer></script>
+</head>
+<body data-theme="dark">
+  <div class="app">
+    <header class="header">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 2.5 20 6v5.8c0 5.1-3.6 8.2-8 10.2-4.4-2-8-5.1-8-10.2V6l8-3.5Z"/><path d="m8.5 12 2.4 2.4 4.8-5"/></svg>
+        </div>
+        <div><strong>Code Security Analyzer</strong><span>DevSecOps · Web 1.6</span></div>
+      </div>
+      <div class="head-actions">
+        <span class="local-pill"><span class="dot"></span> LOCALHOST ONLY</span>
+        <button id="themeButton" class="ghost-btn" type="button" title="Переключить тему" aria-label="Переключить тему">☾ Тёмная</button>
+      </div>
+    </header>
+
+    <nav class="navigation" aria-label="Разделы"><span class="nav-active">Аудит исходного кода</span><span class="nav-passive">LLM + Semgrep</span></nav>
+
+    <section class="intro">
+      <div><div class="eyebrow">SECURITY WORKSPACE</div><h1>Проверка исходного кода</h1><p>Локальный анализ нескольких исходников без выполнения пользовательского кода. Находки требуют ручной проверки.</p></div>
+      <div class="intro-badge"><span class="badge-dot"></span> Прототип для диплома</div>
+    </section>
+
+    <section class="stats" aria-label="Статистика анализа">
+      <article class="stat"><span>Загружено файлов</span><strong id="filesStat">0</strong><small>Текущий запрос</small></article>
+      <article class="stat"><span>Находок в ответе</span><strong id="findingsStat">0</strong><small>Не равно доказанным уязвимостям</small></article>
+      <article class="stat"><span>Высокий риск</span><strong id="highStat">0</strong><small>По заявленной критичности</small></article>
+      <article class="stat"><span>Semgrep</span><strong class="stat-word" id="semgrepStat">Не запускался</strong><small>Отдельный SAST-сигнал</small></article>
+    </section>
+
+    <main class="layout">
+      <section class="panel configure">
+        <div class="panel-header"><div><span class="panel-label">01 / НАСТРОЙКА</span><h2>Источник и модель</h2></div></div>
+        <div class="field"><label for="modelSelect">Локальная модель Ollama</label><div class="select-line"><select id="modelSelect" aria-label="Модель Ollama"><option>Загрузка моделей…</option></select><button class="icon-btn" type="button" id="refreshModels" title="Обновить модели" aria-label="Обновить модели">↻</button></div><p class="hint" id="modelHint">Запустите Ollama перед анализом.</p></div>
+        <div class="field"><label>Файлы проекта</label>
+          <div id="dropZone" class="drop-zone" tabindex="0" role="button" aria-label="Выбрать исходные файлы"><div class="drop-icon">&lt;/&gt;</div><strong>Перетащите исходники сюда</strong><span>или нажмите для выбора</span><small>Java, Python, JS/TS, Go, C/C++ и другие · до 5 файлов · до 256 КБ каждый</small></div>
+          <input id="filesInput" type="file" multiple accept=".java,.kt,.scala,.c,.h,.cpp,.cc,.cxx,.hpp,.py,.js,.mjs,.jsx,.ts,.tsx,.php,.rb,.go,.rs,.cs,.sql" hidden>
+        </div>
+        <div class="archive-field">
+          <label for="zipInput">Или загрузите ZIP-проект</label>
+          <input id="zipInput" type="file" accept=".zip,application/zip" aria-label="ZIP-архив исходного проекта">
+          <p class="hint">До 2 МБ ZIP, до 30 исходных файлов. Не загружайте архивы с секретами или приватными данными.</p>
+        </div>
+        <div class="selected-title">Выбранные файлы <span id="selectedCount">0 / 5</span></div>
+        <ul class="selected-list" id="selectedList"><li class="empty-small">Файлы ещё не выбраны</li></ul>
+        <button id="scanButton" type="button" class="primary-btn" disabled>Запустить анализ</button>
+        <p class="disclaimer">Исходники анализируются на этом компьютере. Результаты LLM и Semgrep не являются доказательством безопасности. Файлы удаляются из временного каталога после запроса.</p>
+      </section>
+
+      <section class="panel results">
+        <div class="panel-header results-heading"><div><span class="panel-label">02 / РЕЗУЛЬТАТ</span><h2>Находки и проверка</h2></div><div class="report-action-row"><button class="secondary-btn" type="button" id="exportButton" disabled>Экспорт JSON</button><button class="secondary-btn" type="button" id="downloadHtmlReport" disabled>HTML-отчёт для PDF</button></div></div>
+        <div id="scanProgress" class="scan-progress" role="status" aria-live="polite" hidden><span class="spinner" aria-hidden="true"></span><span>Выполняется аудит. Semgrep и LLM могут работать несколько минут; точный процент пока недоступен.</span></div>
+        <div id="notice" class="notice" role="status" aria-live="polite">Выберите несколько исходников и нажмите «Запустить анализ».</div>
+        <div id="diagnostics" class="diagnostics" hidden><strong>Диагностика и ограничения</strong><ul id="diagnosticsList"></ul></div>
+        <section id="llmDiagnosticsPanel" class="quality-panel" aria-label="Диагностика полноты LLM" hidden>
+          <div class="source-heading"><span class="panel-label">02.Б / ПРОВЕРКА LLM</span><strong>Цитаты LLM и согласованность CWE</strong><small>Точная сверка цитаты, номера строки и категории CWE; без автоматического подтверждения уязвимости</small></div>
+          <p class="hint" id="llmDiagnosticsSummary"></p>
+          <div id="llmDiagnosticsList" class="quality-issues"></div>
+        </section>
+        <div class="table-box"><table><thead><tr><th>Файл и находка</th><th>Риск</th><th>CWE</th><th>Строки</th><th>Источник</th></tr></thead><tbody id="findingsBody"><tr><td colspan="5" class="empty-table">Пока нет результатов анализа</td></tr></tbody></table></div>
+        <section class="insights-panel" id="insightsPanel" hidden aria-label="Сводка анализа и предполагаемые совпадения">
+          <div class="source-heading"><span class="panel-label">02.A / АНАЛИТИКА</span><strong>Распределение сигналов и возможные совпадения</strong><small>Подсчёт предупреждений, не доказанных уязвимостей</small></div>
+          <div class="insights-grid">
+            <div class="insights-block"><h3>По критичности</h3><div id="insightsSeverity" class="insights-bars"></div></div>
+            <div class="insights-block"><h3>По CWE (как указано инструментами)</h3><div id="insightsCwe" class="insights-bars"></div></div>
+          </div>
+          <div class="insights-related"><h3>Предполагаемые совпадения LLM + Semgrep <span id="insightsPairCount" class="insights-counter">0</span></h3>
+            <p class="hint">Только одна категория и соседние строки. Это подсказка для ручной сверки, а не подтверждение одной уязвимости. Исходные находки остаются в таблице выше.</p>
+            <div id="insightsPairs" class="insights-pairs"></div>
+          </div>
+        </section>
+        <div class="source-workspace" id="sourceWorkspace" hidden>
+          <div class="source-heading"><span class="panel-label">03 / ИСХОДНЫЙ КОД</span><strong>Просмотр проекта и строк находок</strong><small>Только просмотр · код не выполняется</small></div>
+          <div class="source-grid"><div class="source-tree"><div class="source-tree-head">Файлы проекта</div><div id="projectTree"></div></div><div class="source-view"><div class="source-file-title" id="sourceTitle">Выберите файл</div><div class="source-scroll" id="sourceLines" aria-label="Исходный код с номерами строк"></div></div></div>
+          <p class="hint">Оригинальный код отображается только в текущем браузере и не включается в экспортируемый JSON.</p>
+        </div>
+        <section class="fix-workspace" id="fixWorkspace" hidden aria-label="Предложения исправления Java">
+          <div class="source-heading"><span class="panel-label">04 / ПРЕДЛОЖЕНИЕ ИСПРАВЛЕНИЯ</span><strong>Fix Recommendation + Java Validation</strong><small>Только Java · ручной просмотр · без применения к оригиналу</small></div>
+          <p class="hint" id="fixSelected">Выберите строку с находкой в таблице.</p>
+          <div class="fix-controls"><button type="button" class="primary-btn fix-run" id="fixRunButton" disabled>Сгенерировать и проверить исправление</button><button type="button" class="secondary-btn" id="fixDownloadButton" disabled>Скачать предложение отдельно</button></div>
+          <div id="fixProgress" class="scan-progress" role="status" aria-live="polite" hidden><span class="spinner" aria-hidden="true"></span><span>ИИ генерирует предложение, Java-компилятор и Semgrep проверяют его. Код не выполняется.</span></div>
+          <p id="fixNotice" class="hint" role="status" aria-live="polite">Исправления LLM не являются подтверждённо безопасными.</p>
+          <div id="fixResult" hidden>
+            <div class="fix-checks"><div><small>Компиляция</small><strong id="fixCompilation">—</strong></div><div><small>API</small><strong id="fixApi">—</strong></div><div><small>Итог</small><strong id="fixOverall">—</strong></div><div><small>Semgrep до → после</small><strong id="fixSemgrep">—</strong></div></div>
+            <p id="fixSemgrepNote" class="hint"></p>
+            <div class="fix-panes"><div><h3>Оригинал (без изменений)</h3><pre id="fixOriginal" class="fix-code"></pre></div><div><h3>Предложение LLM (не доверять без проверки)</h3><pre id="fixProposed" class="fix-code"></pre></div></div>
+            <details class="fix-details"><summary>Посмотреть построчное сравнение (+/−)</summary><pre id="fixDiff"></pre></details>
+            <details class="fix-details"><summary>Диагностика Java и API</summary><pre id="fixValidation"></pre></details>
+            <p id="fixNotes" class="hint"></p>
+          </div>
+        </section>
+        <section class="journal-workspace" id="journalWorkspace" aria-label="Журнал экспериментов с исправлениями">
+          <div class="source-heading"><span class="panel-label">05 / ЭКСПЕРИМЕНТЫ</span><strong>Журнал предложений и проверок</strong><small id="journalCount">0 записей</small></div>
+          <p class="hint">Результаты Java/API/Semgrep записываются из ответа приложения. Функциональные сценарии отмечаются <strong>только вручную</strong> по внешнему тесту; сайт их не выполняет. История хранится в этом браузере на этом компьютере: без исходного и предложенного кода.</p>
+          <p id="journalNotice" class="journal-notice" role="status" aria-live="polite">После генерации исправления здесь появится запись.</p>
+          <div class="journal-actions">
+            <button type="button" id="journalCsv" class="secondary-btn" disabled>Экспорт CSV</button>
+            <button type="button" id="journalJson" class="secondary-btn" disabled>Экспорт JSON</button>
+            <button type="button" id="journalClear" class="secondary-btn journal-danger" disabled>Очистить журнал</button>
+          </div>
+          <div class="journal-table-box"><table>
+            <thead><tr><th>Дата / файл</th><th>Модель</th><th>Java / API</th><th>Semgrep</th><th>Функционально</th><th>Статус</th><th></th></tr></thead>
+            <tbody id="journalBody"><tr><td colspan="7" class="journal-empty">Журнал пока пуст.</td></tr></tbody>
+          </table></div>
+          <div id="journalEditor" class="journal-editor" hidden>
+            <h3>Ручная запись функциональных проверок</h3>
+            <p class="hint" id="journalSelected"></p>
+            <p class="hint">Выберите результат каждого сценария. PASSED означает только вашу отметку по внешнему тесту, а не автоматическое подтверждение сайта.</p>
+            <div class="journal-input-grid">
+              <label>Название сценария 1<input id="journalCase1Name" type="text" maxlength="100" autocomplete="off"></label>
+              <label>Результат 1<select id="journalCase1"><option>NOT_CHECKED</option><option>PASSED</option><option>FAILED</option><option>SKIPPED</option></select></label>
+              <label>Название сценария 2<input id="journalCase2Name" type="text" maxlength="100" autocomplete="off"></label>
+              <label>Результат 2<select id="journalCase2"><option>NOT_CHECKED</option><option>PASSED</option><option>FAILED</option><option>SKIPPED</option></select></label>
+              <label>Файл внешнего лога (без пути)<input id="journalEvidence" type="text" maxlength="140" placeholder="Case008-Web12-H2.log" autocomplete="off"></label>
+              <label>Примечание<input id="journalNotes" type="text" maxlength="350" placeholder="Что именно проверялось" autocomplete="off"></label>
+            </div>
+            <button type="button" class="primary-btn journal-save" id="journalSave">Сохранить ручную оценку</button>
+          </div>
+        </section>
+        <section class="scan-history" id="scanHistory" aria-label="История аудитов">
+          <div class="source-heading"><span class="panel-label">06 / ИСТОРИЯ АУДИТОВ</span><strong>Локальная история запусков</strong><small id="scanHistoryCount">0 запусков</small></div>
+          <p class="hint">Хранятся только дата, модель, счётчики и статусы. Исходники, пути, описания находок и исправления в историю не записываются. Старые запуски до Web 1.4 не восстанавливаются автоматически.</p>
+          <p class="scan-history-notice" id="scanHistoryNotice" role="status" aria-live="polite">Новый анализ добавится сюда после завершения.</p>
+          <div class="scan-history-actions">
+            <button type="button" class="secondary-btn" id="scanHistoryCsv" disabled>Экспорт CSV</button>
+            <button type="button" class="secondary-btn" id="scanHistoryJson" disabled>Экспорт JSON</button>
+            <button type="button" class="secondary-btn scan-history-danger" id="scanHistoryClear" disabled>Очистить историю</button>
+          </div>
+          <div class="scan-history-table"><table>
+            <thead><tr><th>Дата / тип</th><th>Модель</th><th>Файлов</th><th>Сигналов</th><th>HIGH</th><th>LLM: успешно / частично / ошибки</th><th>Semgrep</th><th>Совпадений*</th><th>Статус</th></tr></thead>
+            <tbody id="scanHistoryBody"><tr><td colspan="9" class="scan-history-empty">История аудитов пока пуста.</td></tr></tbody>
+          </table></div>
+          <p class="hint">* Предполагаемые совпадения сигналов для ручной проверки. Статус COMPLETE означает завершённость инструментов, а не безопасность кода.</p>
+        </section>
+        <div class="finding-details" id="findingDetails" hidden><div class="details-head"><h3 id="detailTitle"></h3><span class="source-chip" id="detailOrigin"></span></div><div class="detail-grid"><div><span>Описание</span><p id="detailDescription"></p></div><div><span>Рекомендация</span><p id="detailRecommendation"></p></div></div><p id="detailValidation" class="detail-note"></p></div>
+      </section>
+    </main>
+    <footer class="footer"><span>Code Security Analyzer · исследовательский прототип</span><span>Локальная версия · Без публичного доступа</span></footer>
+  </div>
+</body>
+</html>

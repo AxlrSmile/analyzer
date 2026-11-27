@@ -20,6 +20,11 @@ import java.util.List;
 public class PdfReportService {
 
     public void generatePdfReport(List<SourceFile> files, String outputPath) throws DocumentException, IOException {
+        generatePdfReport(files, outputPath, null);
+    }
+
+    public void generatePdfReport(List<SourceFile> files, String outputPath, String coverageNote)
+            throws DocumentException, IOException {
         Document document = new Document(PageSize.A4, 36, 36, 36, 36);
         PdfWriter.getInstance(document, new FileOutputStream(outputPath));
 
@@ -81,10 +86,10 @@ public class PdfReportService {
         addTableCell(statsTable, "Общий объем кода (строк):", boldFont, new Color(245, 247, 250));
         addTableCell(statsTable, String.valueOf(totalLinesOfCode), normalFont, Color.WHITE);
 
-        addTableCell(statsTable, "Файлов без уязвимостей:", boldFont, new Color(245, 247, 250));
+        addTableCell(statsTable, "Файлов без срабатываний:", boldFont, new Color(245, 247, 250));
         addTableCell(statsTable, String.format("%d (%.1f%%)", cleanFiles, totalFiles > 0 ? (cleanFiles * 100.0 / totalFiles) : 0), normalFont, Color.WHITE);
 
-        addTableCell(statsTable, "Всего обнаружено уязвимостей:", boldFont, new Color(245, 247, 250));
+        addTableCell(statsTable, "Предварительных находок LLM/SAST:", boldFont, new Color(245, 247, 250));
         addTableCell(statsTable, String.valueOf(totalVulns), boldFont, Color.WHITE);
 
         addTableCell(statsTable, "Распределение по критичности:", boldFont, new Color(245, 247, 250));
@@ -92,6 +97,17 @@ public class PdfReportService {
                 highSeverityCount, mediumSeverityCount, lowSeverityCount), normalFont, Color.WHITE);
 
         document.add(statsTable);
+        Paragraph limitations = new Paragraph(
+                "Важно: LLM- и SAST-срабатывания не подтверждают эксплуатационную уязвимость. "
+                + "Ноль находок не означает отсутствие риска. Статус 'Строки проверены' "
+                + "может относиться к фрагменту кода, а не ко всему файлу.", normalFont);
+        limitations.setSpacingBefore(8);
+        document.add(limitations);
+        if (coverageNote != null && !coverageNote.isBlank()) {
+            Paragraph coverage = new Paragraph("Полнота проверки: " + coverageNote, normalFont);
+            coverage.setSpacingBefore(6);
+            document.add(coverage);
+        }
         document.add(new Paragraph("\n"));
 
         // 3. Таблица со списком всех файлов
@@ -105,7 +121,7 @@ public class PdfReportService {
 
         addTableCell(filesTable, "Имя файла", tableHeaderFont, new Color(52, 73, 94));
         addTableCell(filesTable, "Строк кода", tableHeaderFont, new Color(52, 73, 94));
-        addTableCell(filesTable, "Уязвимости", tableHeaderFont, new Color(52, 73, 94));
+        addTableCell(filesTable, "Находки LLM/SAST", tableHeaderFont, new Color(52, 73, 94));
 
         for (SourceFile file : files) {
             addTableCell(filesTable, file.getName(), normalFont, Color.WHITE);
@@ -113,7 +129,7 @@ public class PdfReportService {
 
             long count = file.getVulnerabilities().size();
             Color statusBg = count > 0 ? new Color(253, 237, 236) : new Color(234, 250, 234);
-            addTableCell(filesTable, count > 0 ? count + " шт." : "Чисто", normalFont, statusBg);
+            addTableCell(filesTable, count > 0 ? count + " шт." : "Нет срабатываний", normalFont, statusBg);
         }
 
         document.add(filesTable);
@@ -121,7 +137,7 @@ public class PdfReportService {
 
         // 4. Детальные находки уязвимостей
         if (totalVulns > 0) {
-            Paragraph detailsHeader = new Paragraph("3. Детальный разбор найденных дефектов", sectionHeaderFont);
+            Paragraph detailsHeader = new Paragraph("3. Предварительные находки (требуют проверки)", sectionHeaderFont);
             detailsHeader.setSpacingAfter(10);
             document.add(detailsHeader);
 
@@ -163,6 +179,66 @@ public class PdfReportService {
                     vDetails.add(new Chunk("Уязвимость: ", vulnTitleFont));
                     vDetails.add(new Chunk(v.getTitle() + "\n", boldFont));
 
+                    if (v.getCwe() != null) {
+                        vDetails.add(new Chunk("CWE: ", boldFont));
+                        vDetails.add(new Chunk(v.getCwe() + "\n", normalFont));
+                    }
+                    if (v.getSemanticStatus() != null && !"NOT_ASSESSED".equals(v.getSemanticStatus())) {
+                        vDetails.add(new Chunk("Согласованность CWE: ", boldFont));
+                        vDetails.add(new Chunk(v.getSemanticStatus() + "\n", normalFont));
+                        if (v.getSemanticNote() != null) {
+                            vDetails.add(new Chunk(v.getSemanticNote() + "\n", normalFont));
+                        }
+                    }
+                    if (v.getCweAdvisorStatus() != null && !"NOT_ASSESSED".equals(v.getCweAdvisorStatus())) {
+                        vDetails.add(new Chunk("Независимая оценка CWE: ", boldFont));
+                        vDetails.add(new Chunk(v.getCweAdvisorStatus() + "\n", normalFont));
+                        if (v.getCweSuggestion() != null) {
+                            vDetails.add(new Chunk("Предлагаемая категория (не диагноз): ", boldFont));
+                            vDetails.add(new Chunk(v.getCweSuggestion() + "\n", normalFont));
+                        }
+                        if (v.getCweAdvisorNote() != null) {
+                            vDetails.add(new Chunk(v.getCweAdvisorNote() + "\n", normalFont));
+                        }
+                    }
+                    if (v.getMechanismStatus() != null && !"NOT_ASSESSED".equals(v.getMechanismStatus())) {
+                        vDetails.add(new Chunk("Проверка механизма: ", boldFont));
+                        vDetails.add(new Chunk(v.getMechanismStatus() + "\n", normalFont));
+                        if (v.getMechanismNote() != null) {
+                            vDetails.add(new Chunk(v.getMechanismNote() + "\n", normalFont));
+                        }
+                    }
+                    if (v.getEvidence() != null) {
+                        vDetails.add(new Chunk("Цитата исходного кода (LLM): ", boldFont));
+                        vDetails.add(new Chunk(v.getEvidence() + "\n", normalFont));
+                    }
+                    if (v.getModelOutputStatus() != null
+                            && !"NOT_ASSESSED".equals(v.getModelOutputStatus())) {
+                        vDetails.add(new Chunk("Качество ответа LLM: ", boldFont));
+                        vDetails.add(new Chunk(v.getModelOutputStatus() + "\n", normalFont));
+                        if (v.getModelOutputNote() != null) {
+                            vDetails.add(new Chunk(v.getModelOutputNote() + "\n", normalFont));
+                        }
+                    }
+                    if (v.getSourceExcerpt() != null) {
+                        vDetails.add(new Chunk("Исходная строка для ручной сверки (не доказательство): ", boldFont));
+                        vDetails.add(new Chunk(v.getSourceExcerpt() + "\n", normalFont));
+                    }
+                    vDetails.add(new Chunk("Статус проверки: ", boldFont));
+                    vDetails.add(new Chunk(v.getValidationStatusLabel() + "\n", normalFont));
+                    if (v.getValidationNote() != null) {
+                        vDetails.add(new Chunk("Комментарий: ", boldFont));
+                        vDetails.add(new Chunk(v.getValidationNote() + "\n", normalFont));
+                    }
+                    if (v.getAiReviewStatus() != null
+                            && !"NOT_REVIEWED".equals(v.getAiReviewStatus())) {
+                        vDetails.add(new Chunk("Предварительная оценка ИИ: ", boldFont));
+                        vDetails.add(new Chunk(v.getAiReviewStatusLabel() + "\n", normalFont));
+                        if (v.getAiReviewNote() != null) {
+                            vDetails.add(new Chunk("Основание ИИ: ", boldFont));
+                            vDetails.add(new Chunk(v.getAiReviewNote() + "\n", normalFont));
+                        }
+                    }
                     vDetails.add(new Chunk("Описание: ", boldFont));
                     vDetails.add(new Chunk(v.getDescription() + "\n", normalFont));
 

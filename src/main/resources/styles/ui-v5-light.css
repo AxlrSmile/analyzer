@@ -1,0 +1,56 @@
+/* UI Polish v5: light palette extensions. Loaded after the selected theme. */
+.csa-ui-v5 .csa-tree-filter {
+    -fx-background-color: #f2f6fd;
+    -fx-border-color: #c8d4e5;
+    -fx-border-width: 1;
+    -fx-border-radius: 7;
+    -fx-background-radius: 7;
+    -fx-padding: 9;
+}
+.csa-ui-v5 .csa-tree-search {
+    -fx-background-color: white;
+    -fx-border-color: #b7c7df;
+    -fx-border-radius: 5;
+    -fx-background-radius: 5;
+    -fx-text-fill: #202f47;
+    -fx-prompt-text-fill: #677d99;
+    -fx-highlight-fill: #b2d1ff;
+    -fx-padding: 7 9;
+}
+.csa-ui-v5 .csa-tree-search:focused { -fx-border-color: #2b69bb; }
+.csa-ui-v5 .csa-tree-reset {
+    -fx-background-color: #e1e9f5;
+    -fx-text-fill: #273b58;
+    -fx-font-weight: bold;
+    -fx-background-radius: 5;
+    -fx-min-width: 32;
+    -fx-pref-height: 32;
+}
+.csa-ui-v5 .csa-only-sources { -fx-text-fill: #20334d; -fx-font-size: 12px; }
+.csa-ui-v5 .csa-filter-hint { -fx-text-fill: #506783; -fx-font-size: 10px; }
+.csa-ui-v5 .csa-filter-count { -fx-text-fill: #24528e; -fx-font-size: 11px; -fx-font-weight: bold; }
+.csa-ui-v5 .csa-resizable-split > .split-pane-divider {
+    -fx-background-color: #b8c9dd;
+    -fx-padding: 2;
+}
+.csa-ui-v5 .tree-view .tree-cell { -fx-font-size: 12px; }
+.csa-ui-v5 .tree-view .tree-cell:filled:selected { -fx-background-color: #2a64a8; }
+.csa-ui-v5 .table-view .table-cell { -fx-padding: 7 8; }
+
+/* Scan Setup v6 */
+.csa-ui-v5 .csa-scan-models-bar {
+    -fx-background-color: #eff5fc;
+    -fx-border-color: #c8d4e5;
+    -fx-border-width: 1;
+    -fx-border-radius: 7;
+    -fx-background-radius: 7;
+    -fx-padding: 9 12;
+}
+.csa-ui-v5 .csa-scan-model-label {
+    -fx-font-weight: bold;
+    -fx-text-fill: #223952;
+}
+.csa-ui-v5 .csa-scan-supported-languages {
+    -fx-text-fill: #506783;
+    -fx-font-size: 11px;
+}

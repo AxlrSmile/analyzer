@@ -1,2 +1,7 @@
 /mvnw text eol=lf
 *.cmd text eol=crlf
+/benchmark-dataset/java/*.java text eol=lf
+
+# Historical installer payloads and fixtures are verified by byte-level hashes.
+/web-v*-files/** text eol=lf
+/web17-tests/fixtures/** text eol=lf

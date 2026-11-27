@@ -1,0 +1,16 @@
+/* JavaFX WebView HTML overlay: author CSS in MainController is light-only. */
+html, body { background: #202b3d !important; color: #e8edf5 !important; }
+body { font-family: 'Segoe UI', Arial, sans-serif !important; }
+h1,h2,h3,h4,h5,h6,p,li,blockquote,span { color: inherit !important; }
+a { color: #9ac0ff !important; }
+.msg { color: #e8edf5 !important; box-shadow: none !important; }
+.msg.user { background: #263f60 !important; border-left: 4px solid #6daaff !important; }
+.msg.ai { background: #28384d !important; border-left: 4px solid #5ed2a0 !important; }
+.msg.system { background: #403a35 !important; border-left: 4px solid #f5b96c !important; }
+.log { color: #e8edf5 !important; }
+pre { background: #151e2b !important; color: #dce7f8 !important; border: 1px solid #455977 !important; }
+code { background: #35465f !important; color: #cfe2ff !important; }
+pre code { background: transparent !important; color: #dce7f8 !important; }
+blockquote { border-left: 3px solid #7592b8 !important; }
+th, td { border-color: #50627a !important; color: #e8edf5 !important; }
+input, textarea { background: #202b3d !important; color: #e8edf5 !important; }

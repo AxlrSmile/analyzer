@@ -1,75 +1,83 @@
 package com.analyzer.service.scanner;
 
+import com.analyzer.domain.model.SourceFile;
+import com.analyzer.domain.model.Vulnerability;
+import com.analyzer.service.agent.SecurityScannerAgent;
 import org.springframework.stereotype.Service;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-@Service // Регистрируем сервис в контейнере Spring
+@Service
 public class ProjectScannerImpl implements ProjectScanner {
 
-    // Черный список папок, которые мы игнорируем (производительность и безопасность)
-    private static final Set<String> IGNORED_DIRECTORIES = Set.of(
-            ".git", ".idea", ".vscode", "node_modules", "target", "build", "gradle", ".gradle"
-    );
+    private final SecurityScannerAgent securityScannerAgent;
 
-    // Белый список расширений файлов исходного кода (Whitelist)
-    private static final Set<String> ALLOWED_EXTENSIONS = Set.of(
-            "java", "py", "js", "ts", "cpp", "c", "cs", "go", "php", "rb"
-    );
+    public ProjectScannerImpl(SecurityScannerAgent securityScannerAgent) {
+        this.securityScannerAgent = securityScannerAgent;
+    }
 
     @Override
-    public List<File> scanDirectory(File projectDir) throws IOException {
-        if (projectDir == null || !projectDir.exists() || !projectDir.isDirectory()) {
-            throw new IllegalArgumentException("Предоставленный путь не является валидной директорией");
+    public List<SourceFile> scanDirectory(File directory) {
+        List<SourceFile> sourceFiles = new ArrayList<>();
+        if (directory == null || !directory.exists() || !directory.isDirectory()) {
+            return sourceFiles;
         }
 
-        Path startPath = projectDir.toPath();
+        try (Stream<Path> paths = Files.walk(directory.toPath())) {
+            paths.filter(Files::isRegularFile)
+                    .filter(path -> isSupportedExtension(path.toString()))
+                    .forEach(path -> {
+                        try {
+                            String content = Files.readString(path);
+                            long linesCount = Files.lines(path).count();
+                            String relativePath = directory.toPath().relativize(path).toString();
 
-        // Открываем NIO-поток для обхода дерева файлов
-        try (Stream<Path> stream = Files.walk(startPath)) {
-            return stream
-                    .filter(Files::isRegularFile) // Берем только файлы (исключаем папки)
-                    .filter(path -> !isIgnored(path, startPath)) // Фильтруем служебные папки
-                    .filter(this::isCodeFile) // Фильтруем по расширению
-                    .map(Path::toFile) // Преобразуем Path в стандартный java.io.File
-                    .collect(Collectors.toList());
+                            SourceFile file = new SourceFile(
+                                    path.getFileName().toString(),
+                                    path,
+                                    relativePath,
+                                    linesCount,
+                                    content
+                            );
+                            sourceFiles.add(file);
+                        } catch (IOException e) {
+                            System.err.println("Ошибка чтения файла " + path + ": " + e.getMessage());
+                        }
+                    });
+        } catch (IOException e) {
+            System.err.println("Ошибка обхода директории: " + e.getMessage());
         }
+
+        return sourceFiles;
     }
 
-    /**
-     * Проверяет, находится ли файл внутри игнорируемой директории.
-     */
-    private boolean isIgnored(Path path, Path startPath) {
-        // Получаем относительный путь от корня сканирования
-        Path relativePath = startPath.relativize(path);
-
-        // Проверяем каждый элемент пути (папку) на вхождение в черный список
-        for (Path element : relativePath) {
-            if (IGNORED_DIRECTORIES.contains(element.toString())) {
-                return true;
-            }
+    @Override
+    public List<Vulnerability> analyzeFile(SourceFile file) {
+        if (file == null || file.getContent() == null || file.getContent().isBlank()) {
+            return new ArrayList<>();
         }
-        return false;
+
+        // Передаем контент и имя файла для точного распознавания языка
+        List<Vulnerability> vulnerabilities = securityScannerAgent.scanChunk(
+                file.getContent(),
+                file.getName(),
+                null
+        );
+        file.setVulnerabilities(vulnerabilities);
+        return vulnerabilities;
     }
 
-    /**
-     * Проверяет, имеет ли файл разрешенное расширение исходного кода.
-     */
-    private boolean isCodeFile(Path path) {
-        String fileName = path.getFileName().toString();
-        int lastDotIndex = fileName.lastIndexOf('.');
 
-        if (lastDotIndex == -1 || lastDotIndex == fileName.length() - 1) {
-            return false; // Файл без расширения или точка в самом конце
-        }
 
-        String extension = fileName.substring(lastDotIndex + 1).toLowerCase();
-        return ALLOWED_EXTENSIONS.contains(extension);
+    private boolean isSupportedExtension(String fileName) {
+        String lower = fileName.toLowerCase();
+        return lower.endsWith(".java") || lower.endsWith(".py") || lower.endsWith(".js")
+                || lower.endsWith(".ts") || lower.endsWith(".cpp") || lower.endsWith(".cs");
     }
 }

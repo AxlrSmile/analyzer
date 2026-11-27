@@ -1,6 +1,11 @@
 package com.analyzer;
 
 import com.analyzer.config.SpringFXMLLoader;
+import com.analyzer.ui.theme.UiDashboardEnhancer;
+import com.analyzer.ui.theme.UiIconPolish;
+import com.analyzer.ui.theme.UiContrastRepair;
+import com.analyzer.ui.theme.UiPolishV5;
+import com.analyzer.ui.theme.UiAppearanceManager;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Parent;
@@ -17,6 +22,7 @@ public class JavaFxApplication extends Application {
     public void init() throws Exception {
         this.context = new SpringApplicationBuilder()
                 .sources(CodeSecurityAnalyzerApplication.class)
+                .web(org.springframework.boot.WebApplicationType.NONE)
                 .run(getParameters().getRaw().toArray(new String[0]));
     }
 
@@ -30,6 +36,11 @@ public class JavaFxApplication extends Application {
 
         primaryStage.setTitle("Локальный Анализатор Кода");
         primaryStage.setScene(new Scene(root));
+        UiAppearanceManager.install(primaryStage, root);
+        UiDashboardEnhancer.install(primaryStage, root);
+        UiIconPolish.install(primaryStage, root);
+        UiContrastRepair.install(primaryStage, root);
+        UiPolishV5.install(primaryStage, root);
         primaryStage.show();
     }
 

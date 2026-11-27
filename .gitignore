@@ -31,3 +31,34 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Local security tooling and generated results (do not commit) ###
+.venv/
+.venv-*/
+__pycache__/
+*.py[cod]
+ci-reports/
+*-security-findings.json
+semgrep-results.json
+semgrep-benchmark.json
+*.sarif
+pip-*.whl
+.env
+.env.*
+!.env.example
+
+# 8.8: locally generated LLM fixes and temporary validation work
+fix-validation/
+*.proposed.java
+*.validation.txt
+
+# 8.9: local research journal and charts (may contain manually entered notes)
+fix-experiments-*.csv
+fix-experiments-*.md
+fix-experiments-*.svg
+
+# 9.0: local preflight audit record (never publish unreviewed local metadata)
+release-preflight-*.json
+
+# Local snapshots created by the UI and web patch installers
+/*-backup/
